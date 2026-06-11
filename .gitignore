@@ -24,6 +24,12 @@ Thumbs.db
 # Claude Code local state
 .claude/
 
+# Dades locals d'usuari (agrupacions desades en JSON)
+data/
+
+# Tests (cache)
+.pytest_cache/
+
 # Distribution / packaging
 build/
 dist/

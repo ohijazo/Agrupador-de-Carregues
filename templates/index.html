@@ -15,6 +15,7 @@
             <p class="subtitle">Sumatori d'embalatges de múltiples càrregues per producte</p>
         </div>
         <div class="header-help">
+            <button type="button" id="btn-agrupacions-desades" class="btn btn-icon" title="Agrupacions desades" aria-label="Agrupacions desades">★</button>
             <button type="button" id="btn-help" class="btn btn-icon" title="Dreceres de teclat" aria-label="Ajuda">?</button>
         </div>
     </div>
@@ -34,10 +35,16 @@
                 <small class="field-error" id="err-fins" hidden></small>
             </div>
             <div class="field grow">
-                <label for="tra_codi">Transportista</label>
-                <select id="tra_codi">
-                    <option value="">Tots</option>
-                </select>
+                <label for="ms-trans-search">Transportistes</label>
+                <div class="multi-select" id="ms-transportistes">
+                    <div class="ms-control" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                        <div class="ms-chips" id="ms-trans-chips"></div>
+                        <input type="search" class="ms-search" id="ms-trans-search"
+                               placeholder="Tots · escriu per buscar…" autocomplete="off">
+                        <span class="ms-arrow" aria-hidden="true">▾</span>
+                    </div>
+                    <ul class="ms-dropdown" id="ms-trans-dropdown" role="listbox" aria-multiselectable="true" hidden></ul>
+                </div>
             </div>
             <div class="field actions">
                 <button type="submit" id="btn-buscar" class="btn btn-primary">
@@ -53,6 +60,26 @@
                 <button type="button" class="chip-btn" data-range="this-month">Aquest mes</button>
                 <button type="button" class="chip-btn" data-range="last-30">Últims 30 dies</button>
             </div>
+            <details id="filtres-avancats" class="filtres-avancats">
+                <summary>Filtres avançats</summary>
+                <div class="filtres-avancats-body">
+                    <div class="field">
+                        <label>Estat de la càrrega</label>
+                        <div id="estats-chips" class="chip-toggle-row" role="group" aria-label="Estats de càrrega"></div>
+                    </div>
+                    <div class="field grow">
+                        <label for="filtre-article">Conté l'article</label>
+                        <div class="autocomplete">
+                            <input type="search" id="filtre-article" placeholder="Codi o descripció…" autocomplete="off">
+                            <ul id="filtre-article-suggs" class="autocomplete-list" hidden></ul>
+                        </div>
+                        <small id="filtre-article-sel" class="muted" hidden></small>
+                    </div>
+                    <div class="field actions">
+                        <button type="button" id="btn-neteja-avancats" class="btn btn-ghost btn-sm">Neteja</button>
+                    </div>
+                </div>
+            </details>
         </form>
     </div>
 </section>
@@ -98,6 +125,13 @@
                 <tbody></tbody>
             </table>
         </div>
+        <div id="peu-paginacio" class="peu-paginacio" hidden>
+            <span class="muted" id="peu-paginacio-text"></span>
+            <button type="button" id="btn-carrega-mes" class="btn btn-ghost">
+                <span class="btn-label">Carrega'n més</span>
+                <span class="btn-spinner" hidden></span>
+            </button>
+        </div>
         <div id="msg-llista-buida" class="empty-state empty-state-inline" hidden>
             <p>Cap càrrega coincideix amb els filtres.</p>
             <button type="button" class="btn btn-ghost" id="btn-amplia-setmana">Mostra l'última setmana</button>
@@ -132,9 +166,10 @@
                 </div>
                 <div class="resultat-header-tools">
                     <span id="badge-incidencies" hidden></span>
-                    <button type="button" id="btn-imprimir" class="btn btn-primary">🖨 Imprimir</button>
+                    <button type="button" id="btn-imprimir" class="btn btn-primary" aria-label="Imprimir l'informe"><span aria-hidden="true">🖨</span> Imprimir</button>
+                    <button type="button" id="btn-desar-agrupacio" class="btn btn-ghost">⭐ Desa</button>
                     <button type="button" id="btn-exportar-csv" class="btn btn-ghost">Exportar CSV</button>
-                    <button type="button" id="btn-tanca-resultat" class="btn btn-ghost dialog-close-btn" aria-label="Tanca">×</button>
+                    <button type="button" id="btn-tanca-resultat" class="btn btn-ghost dialog-close-btn" aria-label="Tanca el resultat"><span aria-hidden="true">×</span></button>
                 </div>
             </header>
 
@@ -189,6 +224,17 @@
         </article>
     </dialog>
 
+    <dialog id="desades-dialog" class="help-dialog desades-dialog">
+        <header>
+            <h3>Agrupacions desades</h3>
+            <button type="button" class="dialog-close" data-close aria-label="Tanca">×</button>
+        </header>
+        <div class="desades-body">
+            <ul id="desades-llista" class="desades-llista"></ul>
+            <p id="desades-buit" class="muted" style="text-align:center;padding:1.5rem" hidden>Cap agrupació desada encara.</p>
+        </div>
+    </dialog>
+
     <dialog id="help-dialog" class="help-dialog">
         <header><h3>Dreceres de teclat</h3><button class="dialog-close" data-close>×</button></header>
         <ul class="kbd-list">
@@ -202,6 +248,8 @@
 
 </main>
 
+<script src="{{ url_for('static', filename='js/fmt.js') }}"></script>
+<script src="{{ url_for('static', filename='js/palets.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

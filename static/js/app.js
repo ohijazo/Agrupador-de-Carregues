@@ -9,29 +9,7 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const fmt = new Intl.NumberFormat("ca-ES");
 const fmtKg = new Intl.NumberFormat("ca-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// Converteix qualsevol data (ISO YYYY-MM-DD, Date o string ja amb separadors) a "DD-MM-YYYY"
-function fmtData(v) {
-    if (v == null || v === "") return "";
-    if (v instanceof Date) {
-        const dd = String(v.getDate()).padStart(2, "0");
-        const mm = String(v.getMonth() + 1).padStart(2, "0");
-        return `${dd}-${mm}-${v.getFullYear()}`;
-    }
-    const s = String(v).trim();
-    // Format ISO YYYY-MM-DD (possible amb hora darrere)
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-    // Format YYYY/MM/DD
-    const m2 = s.match(/^(\d{4})\/(\d{2})\/(\d{2})/);
-    if (m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
-    return s;
-}
-function fmtDataHora(d) {
-    if (!(d instanceof Date)) d = new Date(d);
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${fmtData(d)} ${hh}:${mi}`;
-}
+// fmtData i fmtDataHora venen carregades des de fmt.js abans d'aquest fitxer.
 
 const STORAGE_KEY = "agrupacioCarregues.prefs.v1";
 
@@ -70,12 +48,15 @@ const state = {
     filtreText: "",
     ordenacio: { col: "car_fecsalida", dir: "desc" },
     ordenacioProductes: { col: "total_sacs", dir: "desc" },
+    paginacio: { limit: 500, offset: 0, total: 0 },
+    filtresAvancats: { estat: null, art_codi: null, art_descrip: "" },
     resultat: null,
     colorsCarrega: new Map(),  // carrega_id -> {color, bg}
     abortCerca: null,
     abortAgrupar: null,
 };
 
+let _storageWarned = false;
 function carregarPrefs() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -87,7 +68,13 @@ function guardarPrefs(patch) {
     try {
         const cur = carregarPrefs();
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cur, ...patch }));
-    } catch {}
+    } catch {
+        if (!_storageWarned) {
+            _storageWarned = true;
+            // showToast pot no existir encara durant el bootstrap inicial; sigues defensiu
+            try { showToast("warning", "Preferències no desades", "El navegador no permet guardar les preferències. Es perdran en tancar."); } catch {}
+        }
+    }
 }
 
 // ============================================================
@@ -259,18 +246,166 @@ function validarFormulari() {
 // ============================================================
 // Transportistes
 // ============================================================
+// ============================================================
+// Component MultiSelect: chips + dropdown cercable
+// ============================================================
+function crearMultiSelect(rootSel, {
+    onChange = () => {},
+    emptyLabel = "Sense resultats",
+} = {}) {
+    const root = $(rootSel);
+    if (!root) return null;
+    const control = root.querySelector(".ms-control");
+    const chipsBox = root.querySelector(".ms-chips");
+    const search = root.querySelector(".ms-search");
+    const dropdown = root.querySelector(".ms-dropdown");
+    let items = [];           // {value, label, code}
+    const selected = new Set();
+    let focusedIdx = -1;
+
+    const isOpen = () => !dropdown.hidden;
+    const obre = () => {
+        if (isOpen()) return;
+        dropdown.hidden = false;
+        root.classList.add("is-open");
+        control.setAttribute("aria-expanded", "true");
+        renderDropdown();
+    };
+    const tanca = () => {
+        dropdown.hidden = true;
+        root.classList.remove("is-open");
+        control.setAttribute("aria-expanded", "false");
+        focusedIdx = -1;
+        if (search) { search.value = ""; }
+        renderDropdown();
+    };
+
+    function visibles() {
+        const q = (search.value || "").toLowerCase().trim();
+        if (!q) return items;
+        return items.filter(it =>
+            (it.label || "").toLowerCase().includes(q) ||
+            (it.code || "").toLowerCase().includes(q)
+        );
+    }
+
+    function renderChips() {
+        chipsBox.innerHTML = "";
+        for (const v of selected) {
+            const it = items.find(x => x.value === v);
+            const lbl = it ? (it.label || it.value) : v;
+            const chip = document.createElement("span");
+            chip.className = "ms-chip";
+            chip.innerHTML = `<span class="ms-chip-label">${escapeHtml(lbl)}</span>` +
+                             `<button type="button" class="ms-chip-x" aria-label="Treu ${escapeHtml(lbl)}">×</button>`;
+            chip.querySelector(".ms-chip-x").addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                selected.delete(v);
+                renderChips();
+                renderDropdown();
+                onChange([...selected]);
+            });
+            chipsBox.appendChild(chip);
+        }
+    }
+
+    function renderDropdown() {
+        const v = visibles();
+        dropdown.innerHTML = "";
+        if (!v.length) {
+            const li = document.createElement("li");
+            li.className = "ms-empty";
+            li.textContent = emptyLabel;
+            dropdown.appendChild(li);
+            return;
+        }
+        v.forEach((it, i) => {
+            const li = document.createElement("li");
+            li.className = "ms-option" + (selected.has(it.value) ? " is-selected" : "") + (i === focusedIdx ? " is-focused" : "");
+            li.setAttribute("role", "option");
+            li.setAttribute("aria-selected", selected.has(it.value) ? "true" : "false");
+            li.innerHTML = `<span class="ms-option-check" aria-hidden="true"></span>` +
+                           (it.code ? `<code>${escapeHtml(it.code)}</code>` : "") +
+                           `<span>${escapeHtml(it.label || it.value)}</span>`;
+            li.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                toggleVal(it.value);
+            });
+            dropdown.appendChild(li);
+        });
+    }
+
+    function toggleVal(v) {
+        if (selected.has(v)) selected.delete(v);
+        else selected.add(v);
+        renderChips();
+        renderDropdown();
+        onChange([...selected]);
+    }
+
+    control.addEventListener("click", () => {
+        if (!isOpen()) obre();
+        search.focus();
+    });
+    search.addEventListener("input", () => { focusedIdx = -1; renderDropdown(); });
+    search.addEventListener("keydown", (e) => {
+        const v = visibles();
+        if (e.key === "ArrowDown") { e.preventDefault(); focusedIdx = Math.min(v.length - 1, focusedIdx + 1); renderDropdown(); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); focusedIdx = Math.max(0, focusedIdx - 1); renderDropdown(); }
+        else if (e.key === "Enter") {
+            if (focusedIdx >= 0 && v[focusedIdx]) { e.preventDefault(); toggleVal(v[focusedIdx].value); }
+        }
+        else if (e.key === "Escape") { tanca(); }
+        else if (e.key === "Backspace" && !search.value) {
+            const arr = [...selected];
+            if (arr.length) {
+                selected.delete(arr[arr.length - 1]);
+                renderChips(); renderDropdown(); onChange([...selected]);
+            }
+        }
+    });
+    document.addEventListener("click", (e) => {
+        if (!root.contains(e.target)) tanca();
+    });
+
+    return {
+        setItems(arr) {
+            items = arr || [];
+            renderChips();
+            renderDropdown();
+        },
+        setSelected(values) {
+            selected.clear();
+            for (const v of (values || [])) selected.add(v);
+            renderChips();
+            renderDropdown();
+        },
+        getSelected() { return [...selected]; },
+    };
+}
+
+let msTransportistes = null;
 async function carregarTransportistes() {
+    msTransportistes = crearMultiSelect("#ms-transportistes", {
+        onChange: () => {
+            // Persistir i refrescar al canviar selecció
+            guardarPrefs({ tra_codis: msTransportistes.getSelected() });
+            buscarCarregues();
+        },
+        emptyLabel: "No s'ha trobat cap transportista",
+    });
+    if (!msTransportistes) return;
     try {
         const llista = await fetchJson("/api/transportistes");
-        const sel = $("#tra_codi");
-        for (const t of llista) {
-            const opt = document.createElement("option");
-            opt.value = t.tra_codi;
-            opt.textContent = `${t.tra_codi} — ${t.tra_nom}`;
-            sel.appendChild(opt);
-        }
+        msTransportistes.setItems(llista.map(t => ({
+            value: t.tra_codi,
+            code: t.tra_codi,
+            label: t.tra_nom,
+        })));
         const prefs = carregarPrefs();
-        if (prefs.tra_codi) sel.value = prefs.tra_codi;
+        const desats = Array.isArray(prefs.tra_codis) ? prefs.tra_codis
+                      : (prefs.tra_codi ? [prefs.tra_codi] : []);
+        msTransportistes.setSelected(desats);
     } catch (e) {
         showToast("error", "No s'han pogut carregar transportistes", e.message);
     }
@@ -296,36 +431,55 @@ function pintaSkeleton(n = 5) {
 // ============================================================
 // Cerca de càrregues
 // ============================================================
-async function buscarCarregues() {
+async function buscarCarregues(append = false) {
     if (!validarFormulari()) return;
     const desde = $("#desde").value;
     const fins = $("#fins").value;
-    const tra = $("#tra_codi").value;
+    const traCodis = msTransportistes ? msTransportistes.getSelected() : [];
 
-    guardarPrefs({ desde, fins, tra_codi: tra });
+    if (!append) {
+        guardarPrefs({ desde, fins, tra_codis: traCodis });
+        state.paginacio.offset = 0;
+    }
 
     if (state.abortCerca) state.abortCerca.abort();
     state.abortCerca = new AbortController();
 
-    const btn = $("#btn-buscar");
-    btnLoading(btn, true, "Cercant…");
-    pintaSkeleton();
+    const btn = append ? $("#btn-carrega-mes") : $("#btn-buscar");
+    btnLoading(btn, true, append ? "Carregant…" : "Cercant…");
+    if (!append) pintaSkeleton();
     try {
-        const params = new URLSearchParams({ desde, fins });
-        if (tra) params.set("tra_codi", tra);
-        const llista = await fetchJson(`/api/carregues?${params}`, {
+        const params = new URLSearchParams({
+            desde, fins,
+            limit: String(state.paginacio.limit),
+            offset: String(state.paginacio.offset),
+        });
+        for (const c of traCodis) params.append("tra_codi", c);
+        const { estat, art_codi } = state.filtresAvancats;
+        if (estat !== null && estat !== undefined && estat !== "") params.set("estat", String(estat));
+        if (art_codi) params.set("art_codi", art_codi);
+        const resp = await fetchJson(`/api/carregues?${params}`, {
             signal: state.abortCerca.signal,
         });
-        state.carregues = llista;
-        state.seleccio.clear();
-        state.lastClickedIndex = -1;
-        state.filtreText = "";
-        $("#filtre-taula").value = "";
+        // Compatibilitat: el backend retorna {items,total,limit,offset}
+        const items = Array.isArray(resp) ? resp : resp.items;
+        const total = Array.isArray(resp) ? items.length : resp.total;
+        if (append) {
+            state.carregues = state.carregues.concat(items);
+        } else {
+            state.carregues = items;
+            state.seleccio.clear();
+            state.lastClickedIndex = -1;
+            state.filtreText = "";
+            $("#filtre-taula").value = "";
+        }
+        state.paginacio.total = total;
+        state.paginacio.offset = state.carregues.length;
         renderLlistaCarregues();
     } catch (e) {
         if (e.name !== "AbortError") {
             showToast("error", "Error cercant càrregues", e.message);
-            $("#taula-carregues tbody").innerHTML = "";
+            if (!append) $("#taula-carregues tbody").innerHTML = "";
         }
     } finally {
         btnLoading(btn, false);
@@ -364,20 +518,85 @@ function llistaVisible() {
     return llista;
 }
 
+function actualitzarPeuPaginacio() {
+    const peu = $("#peu-paginacio");
+    if (!peu) return;
+    const txt = $("#peu-paginacio-text");
+    const btn = $("#btn-carrega-mes");
+    const carregats = state.carregues.length;
+    const total = state.paginacio.total || carregats;
+    if (total > carregats) {
+        peu.hidden = false;
+        if (txt) txt.textContent = `Mostrant ${fmt.format(carregats)} de ${fmt.format(total)}`;
+        if (btn) btn.disabled = false;
+    } else {
+        peu.hidden = true;
+    }
+}
+
+function crearFilaCarrega(c) {
+    const tr = document.createElement("tr");
+    tr.dataset.carregaId = c.carrega_id;
+    tr.classList.add("row-clickable");
+
+    const tdCheck = document.createElement("td");
+    tdCheck.className = "col-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.dataset.role = "carrega-check";
+    tdCheck.appendChild(cb);
+    tr.appendChild(tdCheck);
+
+    const tdExpand = document.createElement("td");
+    tdExpand.className = "col-expand";
+    const btnExpand = document.createElement("button");
+    btnExpand.type = "button";
+    btnExpand.className = "toggle-btn";
+    btnExpand.dataset.role = "carrega-expand";
+    btnExpand.innerHTML = `<span aria-hidden="true">▶</span>`;
+    btnExpand.title = "Veure albarans i articles de la càrrega";
+    btnExpand.setAttribute("aria-label", "Mostra els albarans de la càrrega");
+    btnExpand.setAttribute("aria-expanded", "false");
+    tdExpand.appendChild(btnExpand);
+    tr.appendChild(tdExpand);
+
+    tr.insertAdjacentHTML("beforeend", `
+        <td><code>${escapeHtml(c.carrega_id)}</code></td>
+        <td class="cell-truncate" title="${escapeHtml(c.car_descripcion)}">${escapeHtml(c.car_descripcion || "—")}</td>
+        <td>${escapeHtml(fmtData(c.car_fecsalida || c.car_fecha) || "—")}</td>
+        <td class="cell-truncate" title="${escapeHtml(c.transportista || c.tra_codi)}">${escapeHtml(c.transportista || c.tra_codi)}</td>
+        <td class="cell-truncate" title="${escapeHtml(c.car_matricula)}">${escapeHtml(c.car_matricula)}</td>
+        <td class="cell-truncate" title="${escapeHtml(c.car_nomconductor)}">${escapeHtml(c.car_nomconductor)}</td>
+        <td class="num">${c.car_pesonetocarga ? fmt.format(c.car_pesonetocarga) : "—"}</td>
+        <td class="cell-truncate" title="${escapeHtml(c.car_observaciones)}">${escapeHtml(c.car_observaciones)}</td>
+    `);
+    return tr;
+}
+
+function actualitzaFilaCarrega(tr, c, idx) {
+    tr.dataset.idx = idx;
+    const cb = tr.querySelector('input[data-role="carrega-check"]');
+    const seleccionada = state.seleccio.has(c.carrega_id);
+    if (cb && cb.checked !== seleccionada) cb.checked = seleccionada;
+    tr.classList.toggle("row-selected", seleccionada);
+}
+
 function renderLlistaCarregues() {
     const tbody = $("#taula-carregues tbody");
-    tbody.innerHTML = "";
     $("#empty-inicial").hidden = true;
     $("#seccio-llista").hidden = false;
 
     const llista = llistaVisible();
-    $("#count-carregues").textContent = `(${state.carregues.length})`;
+    const carregats = state.carregues.length;
+    const total = state.paginacio.total || carregats;
+    $("#count-carregues").textContent = `(${total > carregats ? `${carregats} de ${total}` : total})`;
     if (state.filtreText) {
         $("#count-filtre").hidden = false;
-        $("#count-filtre").textContent = `mostrant ${llista.length} de ${state.carregues.length}`;
+        $("#count-filtre").textContent = `mostrant ${llista.length} de ${carregats}`;
     } else {
         $("#count-filtre").hidden = true;
     }
+    actualitzarPeuPaginacio();
 
     // Marca columna ordenada
     $$("#taula-carregues thead th[data-sort]").forEach(th => {
@@ -388,15 +607,14 @@ function renderLlistaCarregues() {
     });
 
     if (state.carregues.length === 0) {
+        tbody.innerHTML = "";
         $("#msg-llista-buida").hidden = false;
         actualitzarBotoAgrupar();
         actualitzarCheckAll();
         return;
     }
     if (llista.length === 0) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="10" class="muted" style="text-align:center;padding:1.5rem;">Cap càrrega coincideix amb el filtre "${escapeHtml(state.filtreText)}".</td>`;
-        tbody.appendChild(tr);
+        tbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;padding:1.5rem;">Cap càrrega coincideix amb el filtre "${escapeHtml(state.filtreText)}".</td></tr>`;
         $("#msg-llista-buida").hidden = true;
         actualitzarBotoAgrupar();
         actualitzarCheckAll();
@@ -404,58 +622,36 @@ function renderLlistaCarregues() {
     }
     $("#msg-llista-buida").hidden = true;
 
+    // Diff render: reutilitza files existents per carrega_id, mou-les a la posició correcta
+    const existents = new Map();
+    for (const tr of tbody.querySelectorAll('tr[data-carrega-id]')) {
+        existents.set(tr.dataset.carregaId, tr);
+    }
+    let anterior = null;
     llista.forEach((c, idx) => {
-        const tr = document.createElement("tr");
-        tr.dataset.carregaId = c.carrega_id;
-        tr.dataset.idx = idx;
-        tr.classList.add("row-clickable");
-        if (state.seleccio.has(c.carrega_id)) tr.classList.add("row-selected");
-
-        const tdCheck = document.createElement("td");
-        tdCheck.className = "col-check";
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = state.seleccio.has(c.carrega_id);
-        cb.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            gestionaSeleccio(c.carrega_id, idx, ev.shiftKey, cb.checked);
-        });
-        tdCheck.appendChild(cb);
-        tr.appendChild(tdCheck);
-
-        const tdExpand = document.createElement("td");
-        tdExpand.className = "col-expand";
-        const btnExpand = document.createElement("button");
-        btnExpand.type = "button";
-        btnExpand.className = "toggle-btn";
-        btnExpand.textContent = "▶";
-        btnExpand.title = "Veure contingut";
-        btnExpand.setAttribute("aria-expanded", "false");
-        btnExpand.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            toggleDetallCarrega(c, tr, btnExpand);
-        });
-        tdExpand.appendChild(btnExpand);
-        tr.appendChild(tdExpand);
-
-        tr.insertAdjacentHTML("beforeend", `
-            <td><code>${escapeHtml(c.carrega_id)}</code></td>
-            <td class="cell-truncate" title="${escapeHtml(c.car_descripcion)}">${escapeHtml(c.car_descripcion || "—")}</td>
-            <td>${escapeHtml(fmtData(c.car_fecsalida || c.car_fecha) || "—")}</td>
-            <td class="cell-truncate" title="${escapeHtml(c.transportista || c.tra_codi)}">${escapeHtml(c.transportista || c.tra_codi)}</td>
-            <td class="cell-truncate" title="${escapeHtml(c.car_matricula)}">${escapeHtml(c.car_matricula)}</td>
-            <td class="cell-truncate" title="${escapeHtml(c.car_nomconductor)}">${escapeHtml(c.car_nomconductor)}</td>
-            <td class="num">${c.car_pesonetocarga ? fmt.format(c.car_pesonetocarga) : "—"}</td>
-            <td class="cell-truncate" title="${escapeHtml(c.car_observaciones)}">${escapeHtml(c.car_observaciones)}</td>
-        `);
-
-        // Click a la fila (no checkbox, no toggle) commuta selecció
-        tr.addEventListener("click", (ev) => {
-            if (ev.target.closest("input,button,a,code")) return;
-            gestionaSeleccio(c.carrega_id, idx, ev.shiftKey, !state.seleccio.has(c.carrega_id));
-        });
-        tbody.appendChild(tr);
+        let tr = existents.get(c.carrega_id);
+        if (!tr) {
+            tr = crearFilaCarrega(c);
+            tbody.appendChild(tr);
+        } else {
+            existents.delete(c.carrega_id);
+        }
+        actualitzaFilaCarrega(tr, c, idx);
+        // Garanteix l'ordre desitjat
+        if (anterior) {
+            if (anterior.nextSibling !== tr) tbody.insertBefore(tr, anterior.nextSibling);
+        } else {
+            if (tbody.firstChild !== tr) tbody.insertBefore(tr, tbody.firstChild);
+        }
+        anterior = tr;
     });
+    // Elimina files sobrants (ja no a la vista)
+    for (const [, tr] of existents) {
+        const next = tr.nextElementSibling;
+        if (next && next.classList.contains("row-detall-carrega")) next.remove();
+        tr.remove();
+    }
+
     actualitzarBotoAgrupar();
     actualitzarCheckAll();
 }
@@ -551,11 +747,11 @@ async function toggleDetallCarrega(c, tr, btn) {
     const existing = tr.nextElementSibling;
     if (existing && existing.classList.contains("row-detall-carrega")) {
         existing.remove();
-        btn.textContent = "▶";
+        btn.innerHTML = `<span aria-hidden="true">▶</span>`;
         btn.setAttribute("aria-expanded", "false");
         return;
     }
-    btn.textContent = "▼";
+    btn.innerHTML = `<span aria-hidden="true">▼</span>`;
     btn.setAttribute("aria-expanded", "true");
 
     const detall = document.createElement("tr");
@@ -794,8 +990,10 @@ function renderResultat(r) {
     const finsIso = $("#fins").value;
     const desdeFmt = desdeIso ? fmtData(desdeIso) : "—";
     const finsFmt = finsIso ? fmtData(finsIso) : "—";
-    const sel = $("#tra_codi");
-    const tra = sel && sel.value ? (sel.options[sel.selectedIndex]?.textContent || sel.value) : "Tots";
+    const codis = msTransportistes ? msTransportistes.getSelected() : [];
+    const tra = codis.length === 0 ? "Tots" :
+                codis.length <= 3 ? codis.join(", ") :
+                `${codis.length} transportistes`;
     const araStr = fmtDataHora(new Date());
     const metaEl = $("#resultat-meta");
     if (metaEl) {
@@ -884,49 +1082,7 @@ function renderResultat(r) {
     }
 }
 
-// Abreviació curta del tipus de palet a partir de la descripció ("BASE PALET" -> "BASE", etc.)
-function abreviarTipusPalet(descrip) {
-    if (!descrip) return "";
-    const d = String(descrip).toUpperCase();
-    if (d.startsWith("BASE")) return "BASE";
-    if (d.includes("PLAST") && d.includes("EUROPEU")) return "EU·PL";
-    if (d.includes("FUSTA") && d.includes("EUROPEU")) return "EU";
-    if (d.includes("EUROPEU")) return "EU";
-    if (d.includes("PLAST")) return "PL";
-    if (d.includes("AMERICA")) return "AM";
-    if (d.includes("CAIXA")) return "CX";
-    if (d.includes("MIG"))   return "MIG";
-    const paraules = d.split(/\s+/).filter(p => p && p !== "PALET" && !/^\d/.test(p));
-    return paraules[0] ? paraules[0].slice(0, 4) : "";
-}
-
-// Genera el text "(1×42 1×44 EU)" per la cel·la de càrregues d'un producte
-function detallPaletsCarrega(pc) {
-    const grups = new Map();
-    for (const pd of (pc.palets || [])) {
-        const k = `${pd.sacs}||${pd.tipus_palet}`;
-        const cur = grups.get(k) || {
-            sacs: pd.sacs,
-            tipus: pd.tipus_palet,
-            descrip: pd.tipus_palet_descrip,
-            n: 0,
-        };
-        cur.n += 1;
-        grups.set(k, cur);
-    }
-    const llista = [...grups.values()].sort((a, b) => b.sacs - a.sacs);
-    if (!llista.length) return "";
-    const tipusUnics = [...new Set(llista.map(g => g.tipus))];
-    if (tipusUnics.length === 1) {
-        const ab = abreviarTipusPalet(llista[0].descrip);
-        const peces = llista.map(g => `${g.n}×${g.sacs}`).join(" ");
-        return ab ? `${peces} ${ab}` : peces;
-    }
-    return llista.map(g => {
-        const ab = abreviarTipusPalet(g.descrip);
-        return ab ? `${g.n}×${g.sacs} ${ab}` : `${g.n}×${g.sacs}`;
-    }).join(" ");
-}
+// abreviarTipusPalet i detallPaletsCarrega venen carregades des de palets.js abans d'aquest fitxer.
 
 function productesOrdenats() {
     if (!state.resultat) return [];
@@ -1028,6 +1184,7 @@ function ordenarProductesPer(col) {
         // Per columnes numèriques per defecte més gran a més petit
         state.ordenacioProductes.dir = (col === "total_sacs" || col === "total_kg") ? "desc" : "asc";
     }
+    guardarPrefs({ ordenacioProductes: { ...state.ordenacioProductes } });
     renderTaulaProductes();
 }
 
@@ -1139,6 +1296,7 @@ function ordenarPer(col) {
         state.ordenacio.col = col;
         state.ordenacio.dir = "asc";
     }
+    guardarPrefs({ ordenacio: { ...state.ordenacio } });
     renderLlistaCarregues();
 }
 
@@ -1171,12 +1329,238 @@ function setupKeyboard() {
 // ============================================================
 // Bootstrap
 // ============================================================
+async function comprovaHealth() {
+    try {
+        const resp = await fetch("/health");
+        const data = await resp.json();
+        if (!data.db?.ok) {
+            showToast("warning", "Base de dades no disponible",
+                "La connexió SQL no respon. Algunes funcions poden fallar.");
+        }
+        if (!data.motor?.ok) {
+            showToast("warning", "Motor d'embalatges no disponible",
+                "L'agrupació no funcionarà fins que es restableixi.");
+        }
+    } catch (_) {
+        // Si /health falla, el servidor està caigut; ja es manifestarà en la propera petició.
+    }
+}
+
+// ============================================================
+// Filtres avançats: estats + autocompletar articles
+// ============================================================
+async function carregarEstats() {
+    try {
+        const llista = await fetchJson("/api/estats-carregues");
+        const cont = $("#estats-chips");
+        if (!cont) return;
+        cont.innerHTML = "";
+        const totsBtn = document.createElement("button");
+        totsBtn.type = "button";
+        totsBtn.className = "chip-toggle active";
+        totsBtn.dataset.estat = "";
+        totsBtn.textContent = "Tots";
+        cont.appendChild(totsBtn);
+        for (const e of llista) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "chip-toggle";
+            b.dataset.estat = String(e.estat ?? "");
+            b.innerHTML = `Estat ${e.estat} <span class="n">${fmt.format(e.n)}</span>`;
+            cont.appendChild(b);
+        }
+        cont.addEventListener("click", (ev) => {
+            const b = ev.target.closest(".chip-toggle");
+            if (!b) return;
+            $$("#estats-chips .chip-toggle").forEach(x => x.classList.remove("active"));
+            b.classList.add("active");
+            const v = b.dataset.estat;
+            state.filtresAvancats.estat = v === "" ? null : Number(v);
+            guardarPrefs({ filtresAvancats: { ...state.filtresAvancats } });
+            buscarCarregues();
+        });
+    } catch (_) {
+        // Si falla, els filtres avançats queden sense estats; no és crític.
+    }
+}
+
+let _autocompTimer = null;
+function setupAutocompleteArticle() {
+    const inp = $("#filtre-article");
+    const ul = $("#filtre-article-suggs");
+    const sel = $("#filtre-article-sel");
+    if (!inp || !ul) return;
+
+    const triar = (codi, descrip) => {
+        state.filtresAvancats.art_codi = codi;
+        state.filtresAvancats.art_descrip = descrip || "";
+        if (sel) {
+            sel.hidden = false;
+            sel.innerHTML = `Filtrant per <code>${escapeHtml(codi)}</code> — ${escapeHtml(descrip)} <a href="#" id="art-clear" style="margin-left:.4rem">[×]</a>`;
+            $("#art-clear")?.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                state.filtresAvancats.art_codi = null;
+                state.filtresAvancats.art_descrip = "";
+                sel.hidden = true;
+                inp.value = "";
+                guardarPrefs({ filtresAvancats: { ...state.filtresAvancats } });
+                buscarCarregues();
+            });
+        }
+        inp.value = "";
+        ul.hidden = true;
+        ul.innerHTML = "";
+        guardarPrefs({ filtresAvancats: { ...state.filtresAvancats } });
+        buscarCarregues();
+    };
+
+    inp.addEventListener("input", () => {
+        const q = inp.value.trim();
+        clearTimeout(_autocompTimer);
+        if (q.length < 2) {
+            ul.hidden = true; ul.innerHTML = "";
+            return;
+        }
+        _autocompTimer = setTimeout(async () => {
+            try {
+                const llista = await fetchJson(`/api/articles?q=${encodeURIComponent(q)}`);
+                ul.innerHTML = "";
+                if (!llista.length) {
+                    ul.hidden = true;
+                    return;
+                }
+                for (const a of llista) {
+                    const li = document.createElement("li");
+                    li.innerHTML = `<code>${escapeHtml(a.art_codi)}</code> ${escapeHtml(a.art_descrip)}`;
+                    li.addEventListener("click", () => triar(a.art_codi, a.art_descrip));
+                    ul.appendChild(li);
+                }
+                ul.hidden = false;
+            } catch { ul.hidden = true; }
+        }, 200);
+    });
+    document.addEventListener("click", (ev) => {
+        if (!ev.target.closest(".autocomplete")) {
+            ul.hidden = true;
+        }
+    });
+}
+
+// ============================================================
+// Agrupacions desades
+// ============================================================
+async function desarAgrupacioActual() {
+    if (!state.resultat) return;
+    const nom = window.prompt("Nom de l'agrupació:", `Agrupació ${fmtDataHora(new Date())}`);
+    if (nom === null) return;
+    const carregues = state.carregues.filter(c => state.seleccio.has(c.carrega_id));
+    try {
+        await fetchJson("/api/agrupacions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nom, carregues, resultat: state.resultat }),
+        });
+        showToast("success", "Agrupació desada", `"${nom}" guardada correctament.`);
+    } catch (e) {
+        showToast("error", "Error desant", e.message);
+    }
+}
+
+async function obrirDesades() {
+    const dlg = $("#desades-dialog");
+    if (!dlg) return;
+    try {
+        const items = await fetchJson("/api/agrupacions");
+        const ul = $("#desades-llista");
+        const buit = $("#desades-buit");
+        ul.innerHTML = "";
+        if (!items.length) {
+            buit.hidden = false;
+        } else {
+            buit.hidden = true;
+            for (const it of items) {
+                const li = document.createElement("li");
+                li.innerHTML = `
+                    <div class="desades-item-info">
+                        <strong>${escapeHtml(it.nom)}</strong>
+                        <div class="meta">${escapeHtml(fmtData(it.ts))} · ${it.n_carregues} càrregues · ${it.n_productes} productes · ${fmt.format(it.total_palets_fisics)} palets</div>
+                    </div>
+                    <div class="desades-item-actions">
+                        <button type="button" class="btn btn-primary btn-sm" data-act="carregar" data-id="${escapeHtml(it.id)}">Carrega</button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-act="eliminar" data-id="${escapeHtml(it.id)}">Elimina</button>
+                    </div>
+                `;
+                ul.appendChild(li);
+            }
+        }
+        if (typeof dlg.showModal === "function" && !dlg.open) dlg.showModal();
+        else dlg.setAttribute("open", "");
+    } catch (e) {
+        showToast("error", "No s'han pogut llegir les agrupacions desades", e.message);
+    }
+}
+
+async function carregarAgrupacioDesada(id) {
+    try {
+        const obj = await fetchJson(`/api/agrupacions/${encodeURIComponent(id)}`);
+        // Restaurem la selecció i el resultat sense tornar a calcular
+        state.carregues = obj.carregues || [];
+        state.seleccio = new Set(state.carregues.map(c => c.carrega_id));
+        state.resultat = obj.resultat;
+        renderLlistaCarregues();
+        renderResultat(state.resultat);
+        obrirModalResultat();
+        $("#desades-dialog")?.close();
+        showToast("info", "Agrupació recuperada", obj.nom);
+    } catch (e) {
+        showToast("error", "Error carregant l'agrupació", e.message);
+    }
+}
+
+async function eliminarAgrupacioDesada(id) {
+    if (!window.confirm("Eliminar aquesta agrupació desada?")) return;
+    try {
+        await fetchJson(`/api/agrupacions/${encodeURIComponent(id)}`, { method: "DELETE" });
+        showToast("success", "Agrupació eliminada");
+        obrirDesades();  // refresca llista
+    } catch (e) {
+        showToast("error", "Error eliminant", e.message);
+    }
+}
+
+function netejaFiltresAvancats() {
+    state.filtresAvancats = { estat: null, art_codi: null, art_descrip: "" };
+    guardarPrefs({ filtresAvancats: { ...state.filtresAvancats } });
+    // Reset UI
+    $$("#estats-chips .chip-toggle").forEach((b, i) => {
+        b.classList.toggle("active", i === 0);
+    });
+    const inp = $("#filtre-article"); if (inp) inp.value = "";
+    const sel = $("#filtre-article-sel"); if (sel) sel.hidden = true;
+    buscarCarregues();
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     const prefs = carregarPrefs();
     if (prefs.desde) $("#desde").value = prefs.desde;
     if (prefs.fins) $("#fins").value = prefs.fins;
+    if (prefs.ordenacio && prefs.ordenacio.col) {
+        state.ordenacio = { ...prefs.ordenacio };
+    }
+    if (prefs.ordenacioProductes && prefs.ordenacioProductes.col) {
+        state.ordenacioProductes = { ...prefs.ordenacioProductes };
+    }
 
+    if (prefs.filtresAvancats) {
+        state.filtresAvancats = { ...state.filtresAvancats, ...prefs.filtresAvancats };
+    }
+
+    comprovaHealth();
     carregarTransportistes();
+    carregarEstats();
+    setupAutocompleteArticle();
+    const btnNeteja = $("#btn-neteja-avancats");
+    if (btnNeteja) btnNeteja.addEventListener("click", netejaFiltresAvancats);
 
     // Filtres ràpids
     $$(".chip-btn").forEach(b => {
@@ -1194,12 +1578,58 @@ document.addEventListener("DOMContentLoaded", () => {
         buscarCarregues();
     });
 
+    // Botó "Carrega'n més" (paginació)
+    const btnMes = $("#btn-carrega-mes");
+    if (btnMes) btnMes.addEventListener("click", () => buscarCarregues(true));
+
+    // Event delegation al tbody de càrregues (substitueix listeners individuals per fila)
+    const tbCarregues = $("#taula-carregues tbody");
+    if (tbCarregues) {
+        tbCarregues.addEventListener("click", (ev) => {
+            const tr = ev.target.closest("tr[data-carrega-id]");
+            if (!tr) return;
+            const carregaId = tr.dataset.carregaId;
+            const idx = +tr.dataset.idx;
+            const carrega = state.carregues.find(c => c.carrega_id === carregaId);
+            if (!carrega) return;
+            const cb = ev.target.closest('input[data-role="carrega-check"]');
+            const btnExp = ev.target.closest('button[data-role="carrega-expand"]');
+            if (cb) {
+                ev.stopPropagation();
+                gestionaSeleccio(carregaId, idx, ev.shiftKey, cb.checked);
+                return;
+            }
+            if (btnExp) {
+                ev.stopPropagation();
+                toggleDetallCarrega(carrega, tr, btnExp);
+                return;
+            }
+            if (ev.target.closest("input,button,a,code")) return;
+            gestionaSeleccio(carregaId, idx, ev.shiftKey, !state.seleccio.has(carregaId));
+        });
+    }
+
     // Botons selecció / agrupar
     $("#check-all").addEventListener("change", (e) => marcarTotes(e.target.checked));
     $("#btn-agrupar").addEventListener("click", agrupar);
     $("#btn-desselecciona").addEventListener("click", () => marcarTotes(false));
     $("#btn-exportar-csv").addEventListener("click", exportarCsv);
     $("#btn-imprimir").addEventListener("click", imprimirInforme);
+    $("#btn-desar-agrupacio")?.addEventListener("click", desarAgrupacioActual);
+    $("#btn-agrupacions-desades")?.addEventListener("click", obrirDesades);
+
+    // Diàleg de desades — delega clicks
+    const dlgDes = $("#desades-dialog");
+    if (dlgDes) {
+        dlgDes.addEventListener("click", (ev) => {
+            if (ev.target.matches("[data-close]")) { dlgDes.close(); return; }
+            const btn = ev.target.closest("button[data-act]");
+            if (!btn) return;
+            const id = btn.dataset.id;
+            if (btn.dataset.act === "carregar") carregarAgrupacioDesada(id);
+            else if (btn.dataset.act === "eliminar") eliminarAgrupacioDesada(id);
+        });
+    }
     $("#btn-tanca-resultat").addEventListener("click", tancarModalResultat);
 
     // Tancar modal en clicar fora
@@ -1222,13 +1652,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 150);
     filtreInput.addEventListener("input", aplicaFiltre);
 
-    // Ordenació
-    $$("#taula-carregues thead th[data-sort]").forEach(th => {
-        th.addEventListener("click", () => ordenarPer(th.dataset.sort));
-    });
-    $$("#taula-productes thead th[data-sort]").forEach(th => {
-        th.addEventListener("click", () => ordenarProductesPer(th.dataset.sort));
-    });
+    // Ordenació amb suport teclat
+    const sortable = (sel, fn) => {
+        $$(sel).forEach(th => {
+            th.setAttribute("role", "button");
+            th.setAttribute("tabindex", "0");
+            th.addEventListener("click", () => fn(th.dataset.sort));
+            th.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    fn(th.dataset.sort);
+                }
+            });
+        });
+    };
+    sortable("#taula-carregues thead th[data-sort]", ordenarPer);
+    sortable("#taula-productes thead th[data-sort]", ordenarProductesPer);
 
     // Empty state - ampliar setmana
     const btnAmplia = $("#btn-amplia-setmana");

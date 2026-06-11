@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magatzem — {{ nom }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/magatzem.css') }}">
+</head>
+<body class="mag-body" data-agrupacio-id="{{ agrupacio_id }}">
+
+<header class="mag-header">
+    <div class="container mag-header-row">
+        <div>
+            <a href="/magatzem" class="mag-back">← Llistat</a>
+            <h1>{{ nom }}</h1>
+            <p class="mag-subtitle" id="mag-resum"></p>
+        </div>
+        <div class="mag-progres-box">
+            <div class="mag-progres-text"><span id="mag-prep-count">0</span> / <span id="mag-total">0</span></div>
+            <div class="mag-progres-bar"><div id="mag-progres-fill" class="mag-progres-fill"></div></div>
+        </div>
+    </div>
+</header>
+
+<section class="mag-toolbar">
+    <div class="container mag-toolbar-row">
+        <label class="mag-toggle">
+            <input type="checkbox" id="mag-ocultar-prep">
+            Amaga els preparats
+        </label>
+        <div class="mag-toolbar-actions">
+            <button type="button" class="btn btn-ghost" id="mag-imprimir" aria-label="Imprimir l'agrupació">🖨 Imprimir</button>
+            <button type="button" class="btn btn-ghost" id="mag-refresca" aria-label="Refresca des del servidor">↻ Refresca</button>
+        </div>
+    </div>
+</section>
+
+<div class="print-only mag-print-header" id="mag-print-header"></div>
+
+<main class="container">
+    <ul id="mag-articles" class="mag-articles"></ul>
+    <p id="mag-buit" class="mag-empty" hidden>L'agrupació no té productes.</p>
+</main>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='js/fmt.js') }}"></script>
+<script src="{{ url_for('static', filename='js/palets.js') }}"></script>
+<script src="{{ url_for('static', filename='js/magatzem.js') }}"></script>
+</body>
+</html>

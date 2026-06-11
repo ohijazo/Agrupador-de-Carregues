@@ -37,16 +37,73 @@ def connectar():
     return conn
 
 
-def llistar_carregues(desde: str, fins: str, tra_codi: str | None = None) -> list[dict]:
-    """Q1: Llistar càrregues filtrant per data sortida i (opcional) transportista.
+def llistar_carregues(
+    desde: str,
+    fins: str,
+    tra_codis: list[str] | str | None = None,
+    estat: int | None = None,
+    art_codi: str | None = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> dict:
+    """Q1: Llistar càrregues filtrant per data sortida i criteris addicionals.
 
     desde / fins: 'YYYY-MM-DD'
-    Inclou càrregues sense data de sortida si cauen en el filtre per car_fecha.
+    tra_codis: codi sol, llista de codis, o None per 'tots'.
+    estat: si està definit, filtra c.car_estat = ?.
+    art_codi: si està definit, només càrregues amb una línia amb aquest art_codi.
+    Retorna {"items": [...], "total": N, "limit": L, "offset": O}.
     """
     desde_d = datetime.strptime(desde, "%Y-%m-%d").date()
     fins_d = datetime.strptime(fins, "%Y-%m-%d").date() + timedelta(days=1)
+    limit = max(1, min(int(limit), 1000))
+    offset = max(0, int(offset))
 
-    sql = """
+    # Normalitza tra_codis: accepta string simple o llista
+    if isinstance(tra_codis, str):
+        tra_codis = [c.strip() for c in tra_codis.split(",") if c.strip()]
+    elif tra_codis is None:
+        tra_codis = []
+
+    where_sql = """
+        WHERE  COALESCE(c.car_fecsalida, c.car_fecha) >= ?
+          AND  COALESCE(c.car_fecsalida, c.car_fecha) <  ?
+          AND  EXISTS (
+              SELECT 1
+              FROM   Detcargas d WITH (NOLOCK)
+              WHERE  d.eje_ejercicio = c.eje_ejercicio
+                AND  d.sca_serie     = c.sca_serie
+                AND  d.car_numero    = c.car_numero
+                AND  d.det_tipo      IN ('A', 'P')
+          )
+    """
+    where_params: list = [desde_d, fins_d]
+    if tra_codis:
+        placeholders = ",".join(["?"] * len(tra_codis))
+        where_sql += f" AND c.tra_codi IN ({placeholders})"
+        where_params.extend(tra_codis)
+    if estat is not None:
+        where_sql += " AND c.car_estat = ?"
+        where_params.append(int(estat))
+    if art_codi:
+        where_sql += """
+          AND EXISTS (
+              SELECT 1
+              FROM   Detcargas d2 WITH (NOLOCK)
+              JOIN   ALBLINIA l   WITH (NOLOCK)
+                ON  l.eje_ejercicio = SUBSTRING(d2.det_documento, 1, 4)
+                AND l.sal_codigo    = SUBSTRING(d2.det_documento, 5, 2)
+                AND l.cpa_albara    = SUBSTRING(d2.det_documento, 7, 7)
+              WHERE d2.eje_ejercicio = c.eje_ejercicio
+                AND d2.sca_serie     = c.sca_serie
+                AND d2.car_numero    = c.car_numero
+                AND d2.det_tipo      IN ('A','P')
+                AND l.art_codi       = ?
+          )
+        """
+        where_params.append(art_codi)
+
+    sql_items = """
         SELECT c.eje_ejercicio,
                RTRIM(c.sca_serie)   AS sca_serie,
                RTRIM(c.car_numero)  AS car_numero,
@@ -63,30 +120,20 @@ def llistar_carregues(desde: str, fins: str, tra_codi: str | None = None) -> lis
                CAST(c.car_observaciones AS varchar(500)) AS car_observaciones
         FROM   Cargas c WITH (NOLOCK)
         LEFT JOIN TRANS t WITH (NOLOCK) ON t.tra_codi = c.tra_codi
-        WHERE  COALESCE(c.car_fecsalida, c.car_fecha) >= ?
-          AND  COALESCE(c.car_fecsalida, c.car_fecha) <  ?
-          AND  EXISTS (
-              SELECT 1
-              FROM   Detcargas d WITH (NOLOCK)
-              WHERE  d.eje_ejercicio = c.eje_ejercicio
-                AND  d.sca_serie     = c.sca_serie
-                AND  d.car_numero    = c.car_numero
-                AND  d.det_tipo      IN ('A', 'P')
-          )
+    """ + where_sql + """
+        ORDER BY COALESCE(c.car_fecsalida, c.car_fecha) DESC, c.car_numero DESC
+        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     """
-    params = [desde_d, fins_d]
-    if tra_codi:
-        sql += " AND c.tra_codi = ?"
-        params.append(tra_codi)
-    sql += " ORDER BY COALESCE(c.car_fecsalida, c.car_fecha) DESC, c.car_numero DESC"
+    sql_count = "SELECT COUNT(*) AS n FROM Cargas c WITH (NOLOCK) " + where_sql
 
     conn = connectar()
     try:
-        rows = conn.execute(sql, *params).fetchall()
+        total = conn.execute(sql_count, *where_params).fetchone().n
+        rows = conn.execute(sql_items, *where_params, offset, limit).fetchall()
     finally:
         conn.close()
 
-    return [
+    items = [
         {
             "eje_ejercicio": r.eje_ejercicio,
             "sca_serie": r.sca_serie,
@@ -106,6 +153,45 @@ def llistar_carregues(desde: str, fins: str, tra_codi: str | None = None) -> lis
         }
         for r in rows
     ]
+    return {"items": items, "total": int(total), "limit": limit, "offset": offset}
+
+
+def llistar_estats_carregues() -> list[dict]:
+    """Estats distints de càrrega de l'últim any amb el comptador. Cacheable."""
+    sql = """
+        SELECT car_estat, COUNT(*) AS n
+        FROM   Cargas WITH (NOLOCK)
+        WHERE  COALESCE(car_fecsalida, car_fecha) >= DATEADD(YEAR, -1, GETDATE())
+        GROUP  BY car_estat
+        ORDER  BY car_estat
+    """
+    conn = connectar()
+    try:
+        rows = conn.execute(sql).fetchall()
+    finally:
+        conn.close()
+    return [{"estat": int(r.car_estat) if r.car_estat is not None else None, "n": int(r.n)} for r in rows]
+
+
+def cercar_articles(q: str, limit: int = 20) -> list[dict]:
+    """Autocompletar articles per codi o descripció. q de 2+ caràcters."""
+    q = (q or "").strip()
+    if len(q) < 2:
+        return []
+    limit = max(1, min(int(limit), 50))
+    pat = f"%{q}%"
+    sql = """
+        SELECT TOP (?) RTRIM(art_codi) AS art_codi, RTRIM(art_descrip) AS art_descrip
+        FROM   ARTICLES WITH (NOLOCK)
+        WHERE  art_codi LIKE ? OR art_descrip LIKE ?
+        ORDER  BY CASE WHEN art_codi LIKE ? THEN 0 ELSE 1 END, art_codi
+    """
+    conn = connectar()
+    try:
+        rows = conn.execute(sql, limit, pat, pat, pat).fetchall()
+    finally:
+        conn.close()
+    return [{"art_codi": r.art_codi, "art_descrip": (r.art_descrip or "").strip()} for r in rows]
 
 
 def llistar_transportistes() -> list[dict]:

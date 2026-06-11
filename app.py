@@ -10,7 +10,9 @@ import logging
 import os
 import sys
 from datetime import date, timedelta
+from logging.handlers import RotatingFileHandler
 
+import pyodbc
 from flask import Flask, jsonify, render_template, request
 
 # --- Bootstrap .env i sys.path ABANS d'importar agregador ----------------
@@ -44,21 +46,59 @@ if _PREP_PATH and os.path.isdir(_PREP_PATH) and _PREP_PATH not in sys.path:
 # Imports locals (després del sys.path)
 from agregador import agrupar, serialitzar  # noqa: E402
 from consultes_carregues import (  # noqa: E402
-    llistar_carregues, llistar_transportistes, resum_carrega,
+    cercar_articles, connectar, llistar_carregues, llistar_estats_carregues,
+    llistar_transportistes, resum_carrega,
 )
+from valida import (  # noqa: E402
+    valida_codi, valida_int, valida_llista_carregues, valida_rang_dates,
+)
+import agrupacions_store  # noqa: E402
 
-# --- Logging -------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(os.path.join(_HERE, "agrupacio.log"), encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
+# --- Logging amb rotació -------------------------------------------------
+_log_handler = RotatingFileHandler(
+    os.path.join(_HERE, "agrupacio.log"),
+    maxBytes=2_000_000, backupCount=5, encoding="utf-8",
 )
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+logging.basicConfig(level=logging.INFO, handlers=[_log_handler, _stream_handler])
 log = logging.getLogger("agrupacio")
 
 app = Flask(__name__)
+
+
+# --- Headers de seguretat ------------------------------------------------
+@app.after_request
+def secure_headers(resp):
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
+        "img-src 'self' data:; "
+        "frame-ancestors 'none';"
+    )
+    return resp
+
+
+# --- Helpers d'errors estandarditzats ------------------------------------
+def _err_validacio(msg: str):
+    return jsonify({"error": msg}), 400
+
+
+def _err_db():
+    return jsonify({"error": "Error de connexió amb la base de dades. Torna-ho a provar."}), 503
+
+
+def _err_motor():
+    return jsonify({"error": "El motor d'embalatges no està disponible. Contacta amb administració."}), 503
+
+
+def _err_genèric():
+    return jsonify({"error": "S'ha produït un error inesperat."}), 500
 
 
 @app.route("/")
@@ -71,58 +111,244 @@ def index():
     )
 
 
+@app.route("/magatzem", strict_slashes=False)
+def magatzem_llista():
+    return render_template("magatzem_llista.html")
+
+
+@app.route("/magatzem/<id_>")
+def magatzem_prep(id_):
+    obj = agrupacions_store.obtenir(id_)
+    if not obj:
+        return render_template("magatzem_llista.html", error="Agrupació no trobada."), 404
+    return render_template("magatzem_prep.html", agrupacio_id=id_, nom=obj.get("nom", ""))
+
+
 @app.route("/api/transportistes")
 def api_transportistes():
     try:
         return jsonify(llistar_transportistes())
-    except Exception as e:
+    except pyodbc.Error:
+        log.exception("DB error a transportistes")
+        return _err_db()
+    except Exception:
         log.exception("transportistes")
-        return jsonify({"error": str(e)}), 500
+        return _err_genèric()
 
 
 @app.route("/api/carregues")
 def api_carregues():
-    desde = request.args.get("desde", "").strip()
-    fins = request.args.get("fins", "").strip()
-    tra_codi = (request.args.get("tra_codi") or "").strip() or None
-    if not desde or not fins:
-        return jsonify({"error": "Paràmetres 'desde' i 'fins' obligatoris (YYYY-MM-DD)."}), 400
+    rang, err = valida_rang_dates(request.args.get("desde"), request.args.get("fins"))
+    if err:
+        return _err_validacio(err)
+    desde_d, fins_d = rang
+
+    # Multi-transportista: accepta CSV o múltiples query params `tra_codi`
+    tra_param = request.args.getlist("tra_codi")
+    tra_codis: list[str] = []
+    for raw in tra_param:
+        for part in (raw or "").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            v, err = valida_codi(part, "tra_codi", max_len=5)
+            if err:
+                return _err_validacio(err)
+            tra_codis.append(v)
+
+    estat_raw = request.args.get("estat")
+    estat = None
+    if estat_raw not in (None, ""):
+        estat, err = valida_int(estat_raw, "estat", minim=0, maxim=99)
+        if err:
+            return _err_validacio(err)
+
+    art_codi, err = valida_codi(request.args.get("art_codi"), "art_codi", max_len=20, obligatori=False)
+    if err:
+        return _err_validacio(err)
+
+    limit, err = valida_int(request.args.get("limit", "500"), "limit", minim=1, maxim=1000)
+    if err:
+        return _err_validacio(err)
+    offset, err = valida_int(request.args.get("offset", "0"), "offset", minim=0)
+    if err:
+        return _err_validacio(err)
     try:
-        return jsonify(llistar_carregues(desde, fins, tra_codi))
-    except Exception as e:
+        return jsonify(llistar_carregues(
+            desde_d.isoformat(), fins_d.isoformat(),
+            tra_codis=tra_codis or None,
+            estat=estat,
+            art_codi=art_codi,
+            limit=limit, offset=offset,
+        ))
+    except pyodbc.Error:
+        log.exception("DB error a carregues")
+        return _err_db()
+    except Exception:
         log.exception("carregues")
-        return jsonify({"error": str(e)}), 500
+        return _err_genèric()
+
+
+@app.route("/api/estats-carregues")
+def api_estats_carregues():
+    try:
+        return jsonify(llistar_estats_carregues())
+    except pyodbc.Error:
+        log.exception("DB error a estats-carregues")
+        return _err_db()
+    except Exception:
+        log.exception("estats-carregues")
+        return _err_genèric()
+
+
+@app.route("/api/articles")
+def api_articles():
+    q, err = valida_codi(request.args.get("q"), "q", max_len=40, obligatori=False)
+    # `valida_codi` rebutja espais; per a la cerca d'articles deixem accents/espais. Provem directament.
+    q = (request.args.get("q") or "").strip()
+    if len(q) > 40:
+        return _err_validacio("'q' té un format invàlid.")
+    try:
+        return jsonify(cercar_articles(q))
+    except pyodbc.Error:
+        log.exception("DB error a articles")
+        return _err_db()
+    except Exception:
+        log.exception("articles")
+        return _err_genèric()
+
+
+@app.route("/api/agrupacions", methods=["GET"])
+def api_agrupacions_llista():
+    try:
+        return jsonify(agrupacions_store.llistar())
+    except Exception:
+        log.exception("agrupacions llistar")
+        return _err_genèric()
+
+
+@app.route("/api/agrupacions", methods=["POST"])
+def api_agrupacions_guardar():
+    body = request.get_json(silent=True) or {}
+    nom = (body.get("nom") or "").strip()
+    if not nom:
+        return _err_validacio("'nom' és obligatori.")
+    if len(nom) > 80:
+        return _err_validacio("'nom' té un format invàlid (màx 80 caràcters).")
+    carregues, err = valida_llista_carregues(body.get("carregues"))
+    if err:
+        return _err_validacio(err)
+    resultat = body.get("resultat")
+    if not isinstance(resultat, dict):
+        return _err_validacio("'resultat' és obligatori.")
+    try:
+        return jsonify(agrupacions_store.guardar(nom, carregues, resultat))
+    except Exception:
+        log.exception("agrupacions guardar")
+        return _err_genèric()
+
+
+@app.route("/api/agrupacions/<id_>", methods=["GET"])
+def api_agrupacions_obtenir(id_):
+    obj = agrupacions_store.obtenir(id_)
+    if not obj:
+        return jsonify({"error": "Agrupació no trobada."}), 404
+    return jsonify(obj)
+
+
+@app.route("/api/agrupacions/<id_>", methods=["DELETE"])
+def api_agrupacions_eliminar(id_):
+    if agrupacions_store.eliminar(id_):
+        return jsonify({"ok": True})
+    return jsonify({"error": "Agrupació no trobada."}), 404
+
+
+@app.route("/api/agrupacions/<id_>/producte", methods=["PATCH"])
+def api_agrupacions_producte(id_):
+    body = request.get_json(silent=True) or {}
+    art_codi, err = valida_codi(body.get("art_codi"), "art_codi", max_len=20)
+    if err:
+        return _err_validacio(err)
+    preparat = bool(body.get("preparat"))
+    obj = agrupacions_store.marca_producte(id_, art_codi, preparat)
+    if obj is None:
+        return jsonify({"error": "Agrupació no trobada."}), 404
+    return jsonify({"ok": True, "n_preparats": len(obj.get("productes_preparats") or [])})
 
 
 @app.route("/api/carrega-detall")
 def api_carrega_detall():
-    eje = (request.args.get("eje") or "").strip()
-    sca = (request.args.get("sca") or "").strip()
-    car = (request.args.get("car") or "").strip()
-    if not (eje and sca and car):
-        return jsonify({"error": "Paràmetres 'eje', 'sca' i 'car' obligatoris."}), 400
+    eje, err = valida_codi(request.args.get("eje"), "eje", max_len=4)
+    if err:
+        return _err_validacio(err)
+    sca, err = valida_codi(request.args.get("sca"), "sca", max_len=2)
+    if err:
+        return _err_validacio(err)
+    car, err = valida_codi(request.args.get("car"), "car", max_len=7)
+    if err:
+        return _err_validacio(err)
     try:
         return jsonify(resum_carrega(eje, sca, car))
-    except Exception as e:
+    except pyodbc.Error:
+        log.exception("DB error a carrega-detall")
+        return _err_db()
+    except Exception:
         log.exception("carrega-detall")
-        return jsonify({"error": str(e)}), 500
+        return _err_genèric()
 
 
 @app.route("/api/agrupar", methods=["POST"])
 def api_agrupar():
     body = request.get_json(silent=True) or {}
-    carregues = body.get("carregues") or []
-    if not carregues:
-        return jsonify({"error": "Cap càrrega seleccionada."}), 400
-    if len(carregues) > 50:
-        return jsonify({"error": "Màxim 50 càrregues per agrupació."}), 400
+    carregues, err = valida_llista_carregues(body.get("carregues"))
+    if err:
+        return _err_validacio(err)
     try:
         log.info("agrupar: %d càrregues", len(carregues))
         resultat = agrupar(carregues)
-        return jsonify(serialitzar(resultat))
-    except Exception as e:
+        out = serialitzar(resultat)
+        log.info(
+            "audit agrupar ip=%s carregues=%d productes=%d palets=%d",
+            request.remote_addr, len(carregues), len(out.get("productes", [])),
+            out.get("total_palets_fisics", 0),
+        )
+        return jsonify(out)
+    except pyodbc.Error:
+        log.exception("DB error a agrupar")
+        return _err_db()
+    except ModuleNotFoundError:
+        log.exception("App germana no disponible")
+        return _err_motor()
+    except Exception:
         log.exception("agrupar")
-        return jsonify({"error": str(e)}), 500
+        return _err_genèric()
+
+
+@app.route("/health")
+def health():
+    ok_db = ok_motor = False
+    msg_db = msg_motor = ""
+    try:
+        conn = connectar()
+        try:
+            conn.execute("SELECT 1").fetchone()
+            ok_db = True
+        finally:
+            conn.close()
+    except Exception as e:
+        msg_db = str(e)[:200]
+    try:
+        import motor  # noqa: F401
+        ok_motor = hasattr(motor, "calcular_embalatges")
+        if not ok_motor:
+            msg_motor = "motor sense calcular_embalatges"
+    except Exception as e:
+        msg_motor = str(e)[:200]
+    status = 200 if (ok_db and ok_motor) else 503
+    return jsonify({
+        "db": {"ok": ok_db, "msg": msg_db},
+        "motor": {"ok": ok_motor, "msg": msg_motor},
+    }), status
 
 
 if __name__ == "__main__":

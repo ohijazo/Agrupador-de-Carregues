@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magatzem — Preparació</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/magatzem.css') }}">
+</head>
+<body class="mag-body">
+
+<header class="mag-header">
+    <div class="container">
+        <h1>📦 Preparació de càrregues</h1>
+        <p class="mag-subtitle">Tria una agrupació desada per començar</p>
+    </div>
+</header>
+
+<main class="container">
+    {% if error %}<div class="mag-error">{{ error }}</div>{% endif %}
+    <div id="mag-llista-bar" class="mag-llista-bar" hidden>
+        <label class="mag-toggle">
+            <input type="checkbox" id="mag-mostra-acabades">
+            <span>Mostra també les acabades (<span id="mag-acabades-count">0</span>)</span>
+        </label>
+    </div>
+    <ul id="mag-llista" class="mag-llista"></ul>
+    <p id="mag-buit" class="mag-empty" hidden>
+        Cap agrupació desada. Vés a l'app principal per crear-ne una.
+    </p>
+    <p id="mag-totes-acabades" class="mag-empty" hidden>
+        🎉 Totes les agrupacions desades estan acabades. Activa "Mostra també les acabades" per veure-les.
+    </p>
+</main>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='js/fmt.js') }}"></script>
+<script src="{{ url_for('static', filename='js/palets.js') }}"></script>
+<script src="{{ url_for('static', filename='js/magatzem.js') }}"></script>
+</body>
+</html>

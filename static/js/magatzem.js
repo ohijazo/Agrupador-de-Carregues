@@ -1,0 +1,323 @@
+// Mode magatzem — UI tàctil per al preparador.
+
+const $m = (sel, r = document) => r.querySelector(sel);
+const $mAll = (sel, r = document) => Array.from(r.querySelectorAll(sel));
+const fmtN = new Intl.NumberFormat("ca-ES");
+const fmtKgN = new Intl.NumberFormat("ca-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Mateixa paleta que l'app principal perquè els colors coincideixin
+const PALETA_MAG = [
+    { color: "#1f77b4", bg: "#e8f0f7" }, { color: "#ff7f0e", bg: "#fff0db" },
+    { color: "#2ca02c", bg: "#e8f5e6" }, { color: "#d62728", bg: "#fce6e6" },
+    { color: "#9467bd", bg: "#f1ebf7" }, { color: "#17becf", bg: "#e0f5f7" },
+    { color: "#e377c2", bg: "#fbe6f3" }, { color: "#8c564b", bg: "#efe1de" },
+    { color: "#bcbd22", bg: "#f6f6d8" }, { color: "#000000", bg: "#eeeeee" },
+    { color: "#7f7f7f", bg: "#f0f0f0" }, { color: "#ff1493", bg: "#ffe2ee" },
+    { color: "#daa520", bg: "#fbf0d4" }, { color: "#4b0082", bg: "#ece0f0" },
+    { color: "#00875a", bg: "#d8f0e6" }, { color: "#a52a2a", bg: "#f4dada" },
+];
+
+function escapeM(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;",
+    }[c]));
+}
+
+function toast(type, msg) {
+    const wrap = $m("#toasts");
+    if (!wrap) return;
+    const el = document.createElement("div");
+    el.className = `toast toast-${type}`;
+    el.innerHTML = `<span class="toast-icon">${type === "error" ? "✕" : "✓"}</span>
+                    <div class="toast-body">${escapeM(msg)}</div>
+                    <button class="toast-close" aria-label="Tanca">×</button>`;
+    wrap.appendChild(el);
+    el.querySelector(".toast-close").addEventListener("click", () => el.remove());
+    setTimeout(() => el.remove(), 3500);
+}
+
+async function fetchJ(url, opts) {
+    const r = await fetch(url, opts);
+    if (!r.ok) {
+        let err = `HTTP ${r.status}`;
+        try { const j = await r.json(); if (j.error) err = j.error; } catch {}
+        throw new Error(err);
+    }
+    return r.json();
+}
+
+// ---- Vista LLISTA ------------------------------------------------------
+const _isAcabada = (it) => (it.n_productes || 0) > 0 && (it.n_preparats || 0) >= (it.n_productes || 0);
+
+function _pintaLlistaItems(items) {
+    const ul = $m("#mag-llista");
+    ul.innerHTML = "";
+    for (const it of items) {
+        const li = document.createElement("li");
+        const pendents = (it.n_productes || 0) - (it.n_preparats || 0);
+        const acabada = _isAcabada(it);
+        li.innerHTML = `
+            <a href="/magatzem/${encodeURIComponent(it.id)}" class="${acabada ? "is-acabada" : ""}">
+                <div class="nom">
+                    ${escapeM(it.nom)}
+                    ${acabada ? '<span class="badge-acabada">ACABADA</span>' : ""}
+                </div>
+                <div class="meta">
+                    ${escapeM(fmtData(it.ts))} · ${it.n_carregues} càrregues · ${it.n_productes} productes · ${fmtN.format(it.total_palets_fisics)} palets
+                </div>
+                <div class="meta progres">${it.n_preparats || 0} preparats / ${pendents} pendents</div>
+            </a>`;
+        ul.appendChild(li);
+    }
+}
+
+window.magatzemLlista = async function magatzemLlista() {
+    let items = [];
+    try {
+        items = await fetchJ("/api/agrupacions");
+    } catch (e) {
+        toast("error", "No s'ha pogut carregar el llistat: " + e.message);
+        return;
+    }
+    const buit = $m("#mag-buit");
+    const totesAcabades = $m("#mag-totes-acabades");
+    const bar = $m("#mag-llista-bar");
+    const countEl = $m("#mag-acabades-count");
+    const toggle = $m("#mag-mostra-acabades");
+
+    if (!items.length) {
+        buit.hidden = false;
+        bar.hidden = true;
+        return;
+    }
+
+    const acabades = items.filter(_isAcabada);
+    const pendents = items.filter(it => !_isAcabada(it));
+
+    // Sempre mostrem la barra amb el comptador (per recuperar les acabades)
+    bar.hidden = false;
+    countEl.textContent = acabades.length;
+
+    const refresca = () => {
+        const mostrar = toggle.checked;
+        const llista = mostrar ? items : pendents;
+        if (llista.length === 0) {
+            $m("#mag-llista").innerHTML = "";
+            buit.hidden = true;
+            // Si totes són acabades i no es mostren, ho indiquem
+            totesAcabades.hidden = !(acabades.length > 0);
+        } else {
+            totesAcabades.hidden = true;
+            buit.hidden = true;
+            _pintaLlistaItems(llista);
+        }
+    };
+
+    toggle.addEventListener("change", refresca);
+    refresca();
+};
+
+// ---- Vista PREPARACIÓ --------------------------------------------------
+let magState = {
+    id: null,
+    obj: null,
+    preparats: new Set(),
+    ocultarPrep: false,
+    colorsCarrega: new Map(),
+    pollTimer: null,
+};
+
+function colorPerCarregaIdx(i) {
+    return PALETA_MAG[i % PALETA_MAG.length];
+}
+
+function calculaProgres() {
+    const total = (magState.obj?.resultat?.productes || []).length;
+    const prep = magState.preparats.size;
+    $m("#mag-prep-count").textContent = prep;
+    $m("#mag-total").textContent = total;
+    const pct = total ? Math.round((prep / total) * 100) : 0;
+    $m("#mag-progres-fill").style.width = `${pct}%`;
+    const resum = magState.obj?.resultat;
+    if (resum) {
+        $m("#mag-resum").textContent =
+            `${resum.carregues?.length || 0} càrregues · ${fmtN.format(resum.total_sacs || 0)} sacs · ${fmtN.format(resum.total_palets_fisics || 0)} palets`;
+    }
+}
+
+function renderArticles() {
+    const ul = $m("#mag-articles");
+    const buit = $m("#mag-buit");
+    ul.innerHTML = "";
+    const prods = (magState.obj?.resultat?.productes || []).slice();
+    if (!prods.length) {
+        buit.hidden = false;
+        return;
+    }
+    buit.hidden = true;
+    // Ordre: pendents primer (ordenats per total_sacs desc), preparats al final
+    prods.sort((a, b) => {
+        const pa = magState.preparats.has(a.art_codi) ? 1 : 0;
+        const pb = magState.preparats.has(b.art_codi) ? 1 : 0;
+        if (pa !== pb) return pa - pb;
+        return (b.total_sacs || 0) - (a.total_sacs || 0);
+    });
+
+    // Calcula ordre de càrregues per indexar colors igual que a l'app principal
+    const ordreCar = new Map();
+    (magState.obj.resultat.carregues || []).forEach((c, i) => {
+        ordreCar.set(c.carrega_id, i);
+        magState.colorsCarrega.set(c.carrega_id, colorPerCarregaIdx(i));
+    });
+
+    for (const p of prods) {
+        const isPrep = magState.preparats.has(p.art_codi);
+        if (magState.ocultarPrep && isPrep) continue;
+
+        const pcOrdenats = (p.per_carrega || []).slice()
+            .sort((a, b) => (ordreCar.get(a.carrega_id) ?? 999) - (ordreCar.get(b.carrega_id) ?? 999));
+        const carregesHtml = pcOrdenats.map(pc => {
+            const col = magState.colorsCarrega.get(pc.carrega_id) || { color: "#718096", bg: "#f7fafc" };
+            // Format "[N×M] TIPUS" amb abreviació del tipus de palet (BASE, EU, PL...)
+            const peces = detallPaletsCarrega(pc);
+            const carrega = (magState.obj.resultat.carregues || []).find(c => c.carrega_id === pc.carrega_id);
+            const nomCar = carrega?.descripcio || pc.carrega_id;
+            // Número curt: últim segment del carrega_id sense zeros inicials
+            const numFinal = String(pc.carrega_id).split("/").pop() || "";
+            const numCurt = numFinal.replace(/^0+/, "") || numFinal;
+            return `<span class="mag-carrega-row" style="--cb-color:${col.color};--cb-bg:${col.bg}">
+                        <span class="dot" aria-hidden="true"></span>
+                        <span class="nom">${escapeM(nomCar)}</span>
+                        <span class="num">#${escapeM(numCurt)}</span>
+                        <span class="detall">${escapeM(peces)} · ${fmtN.format(pc.total_sacs)} sacs</span>
+                    </span>`;
+        }).join("");
+
+        const li = document.createElement("li");
+        li.className = "mag-card" + (isPrep ? " is-preparat" : "");
+        li.dataset.artCodi = p.art_codi;
+        li.innerHTML = `
+            <div class="mag-art">
+                <div class="mag-art-top">
+                    <span class="mag-art-descrip">${escapeM(p.art_descrip)}</span>
+                    <span class="mag-art-codi">${escapeM(p.art_codi)}</span>
+                    <span class="mag-art-sacs-big">${fmtN.format(p.total_sacs)} <span class="mag-art-sacs-lbl">sacs</span><span class="mag-art-sacs-kg">${fmtKgN.format(p.total_kg)} kg</span></span>
+                </div>
+                <div class="mag-art-totals-sec">${fmtKgN.format(p.total_kg)} kg</div>
+                <div class="mag-art-carregues">${carregesHtml}</div>
+            </div>
+            <button type="button" class="mag-prep-check ${isPrep ? "is-on" : ""}"
+                    data-act="toggle"
+                    aria-label="${isPrep ? "Desmarca preparat" : "Marca com preparat"}">
+                ${isPrep ? "✓" : ""}
+            </button>
+        `;
+        ul.appendChild(li);
+    }
+    calculaProgres();
+}
+
+async function refrescar() {
+    try {
+        const obj = await fetchJ(`/api/agrupacions/${encodeURIComponent(magState.id)}`);
+        magState.obj = obj;
+        magState.preparats = new Set(obj.productes_preparats || []);
+        renderArticles();
+    } catch (e) {
+        toast("error", "No s'ha pogut refrescar: " + e.message);
+    }
+}
+
+async function togglePreparat(artCodi, nouEstat) {
+    // Optimista: actualitza UI immediatament
+    if (nouEstat) magState.preparats.add(artCodi);
+    else magState.preparats.delete(artCodi);
+    renderArticles();
+    try {
+        const r = await fetchJ(`/api/agrupacions/${encodeURIComponent(magState.id)}/producte`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ art_codi: artCodi, preparat: nouEstat }),
+        });
+        // Sincronitza el comptador si vol
+        calculaProgres();
+    } catch (e) {
+        // Rollback
+        if (nouEstat) magState.preparats.delete(artCodi);
+        else magState.preparats.add(artCodi);
+        renderArticles();
+        toast("error", "No s'ha guardat: " + e.message);
+    }
+}
+
+window.magatzemPrep = async function magatzemPrep(id) {
+    magState.id = id;
+    await refrescar();
+
+    // Delegació de clicks: checkbox preparat
+    $m("#mag-articles").addEventListener("click", (ev) => {
+        const btn = ev.target.closest('[data-act="toggle"]');
+        if (!btn) return;
+        const card = btn.closest(".mag-card");
+        if (!card) return;
+        const artCodi = card.dataset.artCodi;
+        const isPrep = magState.preparats.has(artCodi);
+        togglePreparat(artCodi, !isPrep);
+    });
+
+    // Toggle "amaga preparats"
+    $m("#mag-ocultar-prep").addEventListener("change", (ev) => {
+        magState.ocultarPrep = ev.target.checked;
+        renderArticles();
+    });
+
+    // Botó refresca manual
+    $m("#mag-refresca").addEventListener("click", refrescar);
+
+    // Botó imprimir: omple capçalera print-only i obre window.print()
+    const btnImp = $m("#mag-imprimir");
+    if (btnImp) {
+        btnImp.addEventListener("click", () => {
+            const r = magState.obj?.resultat;
+            const hdr = $m("#mag-print-header");
+            const ara = new Date();
+            const nom = magState.obj?.nom || "Agrupació";
+            const totalP = r?.total_palets_fisics || 0;
+            const totalS = r?.total_sacs || 0;
+            const carrs = (r?.carregues || [])
+                .map(c => (c.descripcio || c.carrega_id).trim())
+                .filter(Boolean).join(" · ");
+            hdr.innerHTML = `
+                <div class="mag-print-title">${escapeM(nom)}</div>
+                <div class="mag-print-meta">
+                    ${carrs ? escapeM(carrs) + " · " : ""}
+                    ${fmtN.format(r?.carregues?.length || 0)} càrregues · ${fmtN.format(totalS)} sacs · ${fmtN.format(totalP)} palets
+                    · Imprès ${fmtData(ara)}
+                </div>`;
+            window.print();
+        });
+    }
+
+    // Polling de sincronització cada 5s — només quan la pestanya és visible
+    function programaPoll() {
+        clearTimeout(magState.pollTimer);
+        if (document.hidden) return;
+        magState.pollTimer = setTimeout(async () => {
+            await refrescar();
+            programaPoll();
+        }, 5000);
+    }
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) clearTimeout(magState.pollTimer);
+        else programaPoll();
+    });
+    programaPoll();
+};
+
+// Bootstrap automàtic: si el body té data-agrupacio-id és la pantalla de preparació;
+// si no, és la llista. (CSP no permet scripts inline al template.)
+document.addEventListener("DOMContentLoaded", () => {
+    const id = document.body.dataset.agrupacioId;
+    if (id) window.magatzemPrep(id);
+    else window.magatzemLlista();
+});

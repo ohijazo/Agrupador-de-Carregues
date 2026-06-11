@@ -420,7 +420,7 @@ function pintaSkeleton(n = 5) {
     for (let i = 0; i < n; i++) {
         const tr = document.createElement("tr");
         tr.className = "skeleton-row";
-        tr.innerHTML = `<td colspan="10"><span class="skeleton-bar" style="width:${60 + Math.random()*30}%"></span></td>`;
+        tr.innerHTML = `<td colspan="11"><span class="skeleton-bar" style="width:${60 + Math.random()*30}%"></span></td>`;
         tbody.appendChild(tr);
     }
     $("#empty-inicial").hidden = true;
@@ -501,16 +501,24 @@ function llistaVisible() {
             (c.tra_codi || "").toLowerCase().includes(q) ||
             (c.car_matricula || "").toLowerCase().includes(q) ||
             (c.car_nomconductor || "").toLowerCase().includes(q) ||
-            (c.car_observaciones || "").toLowerCase().includes(q)
+            (c.car_observaciones || "").toLowerCase().includes(q) ||
+            ((c.agrupacions || []).some(a => (a.nom || "").toLowerCase().includes(q)))
         );
     }
     // Ordenació
     const { col, dir } = state.ordenacio;
     if (col) {
         const sign = dir === "asc" ? 1 : -1;
+        const valorOrdre = (c) => {
+            if (col === "agrupacio_nom") {
+                const e = estatAgrupacio(c);
+                return e ? e.info.nom : "";
+            }
+            return c[col];
+        };
         llista.sort((a, b) => {
-            const va = a[col] ?? "";
-            const vb = b[col] ?? "";
+            const va = valorOrdre(a) ?? "";
+            const vb = valorOrdre(b) ?? "";
             if (typeof va === "number" && typeof vb === "number") return (va - vb) * sign;
             return String(va).localeCompare(String(vb), "ca", { numeric: true }) * sign;
         });
@@ -589,8 +597,22 @@ function crearFilaCarrega(c) {
         <td class="cell-truncate" title="${escapeHtml(c.car_nomconductor)}">${escapeHtml(c.car_nomconductor)}</td>
         <td class="num">${c.car_pesonetocarga ? fmt.format(c.car_pesonetocarga) : "—"}</td>
         <td class="cell-truncate" title="${escapeHtml(c.car_observaciones)}">${escapeHtml(c.car_observaciones)}</td>
+        <td class="col-agrupacio">${cellAgrupacioHTML(estat)}</td>
     `);
     return tr;
+}
+
+function cellAgrupacioHTML(estat) {
+    if (!estat) return `<span class="muted">—</span>`;
+    const url = `/magatzem/${encodeURIComponent(estat.info.id)}`;
+    const dataStr = fmtData(estat.info.ts) || "";
+    const cls = estat.tipus === "finalitzada" ? "cell-agrupacio cell-agrupacio--done" : "cell-agrupacio";
+    const dot = estat.tipus === "finalitzada" ? "✓" : "●";
+    return `<a class="${cls}" href="${url}" target="_blank" rel="noopener" title="Obre al magatzem · ${escapeHtml(estat.info.nom)}">
+        <span class="cell-agrupacio-dot">${dot}</span>
+        <span class="cell-agrupacio-nom">${escapeHtml(estat.info.nom)}</span>
+        <span class="cell-agrupacio-data">${escapeHtml(dataStr)}</span>
+    </a>`;
 }
 
 function actualitzaFilaCarrega(tr, c, idx) {
@@ -616,7 +638,9 @@ function renderLlistaCarregues() {
     const llista = llistaVisible();
     const carregats = state.carregues.length;
     const total = state.paginacio.total || carregats;
-    $("#count-carregues").textContent = `(${total > carregats ? `${carregats} de ${total}` : total})`;
+    const nAgrupades = state.carregues.filter(c => estatAgrupacio(c) != null).length;
+    const sufixAgrup = nAgrupades > 0 ? ` · ${nAgrupades} ja agrupades` : "";
+    $("#count-carregues").textContent = `(${total > carregats ? `${carregats} de ${total}` : total}${sufixAgrup})`;
     if (state.filtreText) {
         $("#count-filtre").hidden = false;
         $("#count-filtre").textContent = `mostrant ${llista.length} de ${carregats}`;
@@ -641,7 +665,7 @@ function renderLlistaCarregues() {
         return;
     }
     if (llista.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;padding:1.5rem;">Cap càrrega coincideix amb el filtre "${escapeHtml(state.filtreText)}".</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="muted" style="text-align:center;padding:1.5rem;">Cap càrrega coincideix amb el filtre "${escapeHtml(state.filtreText)}".</td></tr>`;
         $("#msg-llista-buida").hidden = true;
         actualitzarBotoAgrupar();
         actualitzarCheckAll();

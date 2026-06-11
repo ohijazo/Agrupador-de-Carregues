@@ -174,13 +174,18 @@ def api_carregues():
     if err:
         return _err_validacio(err)
     try:
-        return jsonify(llistar_carregues(
+        resp = llistar_carregues(
             desde_d.isoformat(), fins_d.isoformat(),
             tra_codis=tra_codis or None,
             estat=estat,
             art_codi=art_codi,
             limit=limit, offset=offset,
-        ))
+        )
+        # Enriqueix cada càrrega amb les agrupacions desades on apareix.
+        index = agrupacions_store.index_carregues_agrupades()
+        for item in resp.get("items", []):
+            item["agrupacions"] = index.get(item["carrega_id"], [])
+        return jsonify(resp)
     except pyodbc.Error:
         log.exception("DB error a carregues")
         return _err_db()
@@ -276,6 +281,15 @@ def api_agrupacions_producte(id_):
     return jsonify({"ok": True, "n_preparats": len(obj.get("productes_preparats") or [])})
 
 
+@app.route("/api/agrupacions/<id_>/reset-preparats", methods=["POST"])
+def api_agrupacions_reset_preparats(id_):
+    obj = agrupacions_store.reset_preparats(id_)
+    if obj is None:
+        return jsonify({"error": "Agrupació no trobada."}), 404
+    log.info("reset preparats agrupacio=%s ip=%s", id_, request.remote_addr)
+    return jsonify({"ok": True, "n_preparats": 0})
+
+
 @app.route("/api/carrega-detall")
 def api_carrega_detall():
     eje, err = valida_codi(request.args.get("eje"), "eje", max_len=4)
@@ -303,14 +317,33 @@ def api_agrupar():
     carregues, err = valida_llista_carregues(body.get("carregues"))
     if err:
         return _err_validacio(err)
+
+    # Validació duplicats: si alguna càrrega ja és en una agrupació activa
+    # (no finalitzada), retorna 409. Es pot saltar amb ?force=1.
+    force = request.args.get("force") in ("1", "true", "yes")
+    if not force:
+        index = agrupacions_store.index_carregues_agrupades()
+        duplicats = []
+        for c in carregues:
+            cid = c.get("carrega_id")
+            actives = [a for a in index.get(cid, []) if not a.get("finalitzada")]
+            if actives:
+                duplicats.append({"carrega_id": cid, "agrupacions": actives})
+        if duplicats:
+            log.info("agrupar: bloquejat per duplicats — %d càrregues afectades", len(duplicats))
+            return jsonify({
+                "error": "Algunes càrregues ja són en una agrupació activa.",
+                "duplicats": duplicats,
+            }), 409
+
     try:
-        log.info("agrupar: %d càrregues", len(carregues))
+        log.info("agrupar: %d càrregues (force=%s)", len(carregues), force)
         resultat = agrupar(carregues)
         out = serialitzar(resultat)
         log.info(
-            "audit agrupar ip=%s carregues=%d productes=%d palets=%d",
+            "audit agrupar ip=%s carregues=%d productes=%d palets=%d force=%s",
             request.remote_addr, len(carregues), len(out.get("productes", [])),
-            out.get("total_palets_fisics", 0),
+            out.get("total_palets_fisics", 0), force,
         )
         return jsonify(out)
     except pyodbc.Error:

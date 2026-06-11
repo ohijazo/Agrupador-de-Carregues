@@ -143,6 +143,8 @@ function calculaProgres() {
         $m("#mag-resum").textContent =
             `${resum.carregues?.length || 0} càrregues · ${fmtN.format(resum.total_sacs || 0)} sacs · ${fmtN.format(resum.total_palets_fisics || 0)} palets`;
     }
+    const btnDesfes = $m("#mag-desfes");
+    if (btnDesfes) btnDesfes.hidden = prep === 0;
 }
 
 function renderArticles() {
@@ -229,6 +231,10 @@ async function refrescar() {
 }
 
 async function togglePreparat(artCodi, nouEstat) {
+    // Feedback tàctil immediat (vibració a tablet/mòbil).
+    if (navigator.vibrate) {
+        try { navigator.vibrate(nouEstat ? 60 : [30, 40, 30]); } catch {}
+    }
     // Optimista: actualitza UI immediatament
     if (nouEstat) magState.preparats.add(artCodi);
     else magState.preparats.delete(artCodi);
@@ -247,6 +253,22 @@ async function togglePreparat(artCodi, nouEstat) {
         else magState.preparats.add(artCodi);
         renderArticles();
         toast("error", "No s'ha guardat: " + e.message);
+    }
+}
+
+async function desferPreparats() {
+    const n = magState.preparats.size;
+    if (!n) return;
+    if (!window.confirm(`Desmarcar ${n} producte${n > 1 ? "s" : ""} com a preparat${n > 1 ? "s" : ""}?`)) return;
+    try {
+        await fetchJ(`/api/agrupacions/${encodeURIComponent(magState.id)}/reset-preparats`, {
+            method: "POST",
+        });
+        magState.preparats.clear();
+        renderArticles();
+        toast("success", `Desmarcats ${n} productes`);
+    } catch (e) {
+        toast("error", "No s'ha pogut desfer: " + e.message);
     }
 }
 
@@ -273,6 +295,9 @@ window.magatzemPrep = async function magatzemPrep(id) {
 
     // Botó refresca manual
     $m("#mag-refresca").addEventListener("click", refrescar);
+
+    // Botó "Desfés preparats" — només visible quan n'hi ha algun
+    $m("#mag-desfes")?.addEventListener("click", desferPreparats);
 
     // Botó imprimir: omple capçalera print-only i obre window.print()
     const btnImp = $m("#mag-imprimir");

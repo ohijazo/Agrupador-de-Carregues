@@ -296,14 +296,16 @@
     border-radius: 16px;
     background: #fff;
     cursor: pointer;
-    transition: all .12s ease;
+    transition: background .12s ease, border-color .12s ease, color .12s ease,
+                transform .14s cubic-bezier(.34, 1.56, .64, 1);
     flex-shrink: 0;
     color: transparent;
     font-size: 2rem;
     line-height: 1;
+    touch-action: manipulation;
 }
-.mag-prep-check:hover,
-.mag-prep-check:active { border-color: #2c5282; transform: scale(1.03); }
+.mag-prep-check:hover { border-color: #2c5282; }
+.mag-prep-check:active { transform: scale(.92); border-color: #2c5282; }
 .mag-prep-check.is-on {
     background: #38a169;
     border-color: #38a169;

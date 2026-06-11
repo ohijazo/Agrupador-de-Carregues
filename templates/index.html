@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agrupació de càrregues</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header class="app-header">
+    <div class="container header-row">
+        <div>
+            <h1>Agrupació de càrregues</h1>
+            <p class="subtitle">Sumatori d'embalatges de múltiples càrregues per producte</p>
+        </div>
+        <div class="header-help">
+            <button type="button" id="btn-help" class="btn btn-icon" title="Dreceres de teclat" aria-label="Ajuda">?</button>
+        </div>
+    </div>
+</header>
+
+<section class="panel panel-filters">
+    <div class="container">
+        <form id="form-filtres" class="filters-grid" novalidate>
+            <div class="field">
+                <label for="desde">Des de</label>
+                <input type="date" id="desde" value="{{ data_desde }}" required>
+                <small class="field-error" id="err-desde" hidden></small>
+            </div>
+            <div class="field">
+                <label for="fins">Fins a</label>
+                <input type="date" id="fins" value="{{ data_fins }}" required>
+                <small class="field-error" id="err-fins" hidden></small>
+            </div>
+            <div class="field grow">
+                <label for="tra_codi">Transportista</label>
+                <select id="tra_codi">
+                    <option value="">Tots</option>
+                </select>
+            </div>
+            <div class="field actions">
+                <button type="submit" id="btn-buscar" class="btn btn-primary">
+                    <span class="btn-label">Cerca</span>
+                    <span class="btn-spinner" hidden></span>
+                </button>
+            </div>
+            <div class="field quick-filters" role="group" aria-label="Filtres ràpids de data">
+                <button type="button" class="chip-btn" data-range="today">Avui</button>
+                <button type="button" class="chip-btn" data-range="yesterday">Ahir</button>
+                <button type="button" class="chip-btn" data-range="this-week">Aquesta setmana</button>
+                <button type="button" class="chip-btn" data-range="last-week">Última setmana</button>
+                <button type="button" class="chip-btn" data-range="this-month">Aquest mes</button>
+                <button type="button" class="chip-btn" data-range="last-30">Últims 30 dies</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<main class="container">
+
+    <section id="empty-inicial" class="empty-state">
+        <div class="empty-icon" aria-hidden="true">📦</div>
+        <h2>Comença triant un rang de dates</h2>
+        <p>Selecciona un filtre ràpid a sobre o introdueix dates manualment i prem <kbd>Enter</kbd> per cercar càrregues.</p>
+    </section>
+
+    <section id="seccio-llista" class="card" hidden>
+        <header class="card-header">
+            <div class="card-header-main">
+                <h2>Càrregues trobades <span id="count-carregues" class="muted"></span></h2>
+                <span id="count-filtre" class="muted" hidden></span>
+            </div>
+            <div class="card-header-tools">
+                <div class="search-box">
+                    <input type="search" id="filtre-taula" placeholder="Filtra (ID, transportista, matrícula…)" autocomplete="off">
+                </div>
+            </div>
+        </header>
+        <div class="table-wrap">
+            <table class="data-table sortable" id="taula-carregues">
+                <thead>
+                    <tr>
+                        <th class="col-check">
+                            <input type="checkbox" id="check-all" aria-label="Marca o desmarca totes">
+                        </th>
+                        <th class="col-expand"></th>
+                        <th data-sort="carrega_id">Càrrega</th>
+                        <th data-sort="car_descripcion">Nom</th>
+                        <th data-sort="car_fecsalida">Data sortida</th>
+                        <th data-sort="transportista">Transportista</th>
+                        <th data-sort="car_matricula">Matrícula</th>
+                        <th data-sort="car_nomconductor">Conductor</th>
+                        <th class="num" data-sort="car_pesonetocarga">Pes net (kg)</th>
+                        <th>Observacions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div id="msg-llista-buida" class="empty-state empty-state-inline" hidden>
+            <p>Cap càrrega coincideix amb els filtres.</p>
+            <button type="button" class="btn btn-ghost" id="btn-amplia-setmana">Mostra l'última setmana</button>
+        </div>
+    </section>
+
+    <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
+
+    <div id="action-bar" class="action-bar" hidden>
+        <div class="container action-bar-row">
+            <div class="action-bar-info">
+                <span class="action-bar-count" id="action-count">0</span>
+                <span class="action-bar-label">càrregues seleccionades</span>
+                <span class="action-bar-meta" id="action-meta"></span>
+            </div>
+            <div class="action-bar-tools">
+                <button type="button" id="btn-desselecciona" class="btn btn-ghost btn-sm" hidden>Desmarca</button>
+                <button type="button" id="btn-agrupar" class="btn btn-primary btn-lg" disabled>
+                    <span class="btn-label">Agrupar selecció</span>
+                    <span class="btn-spinner" hidden></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <dialog id="resultat-dialog" class="resultat-dialog" aria-labelledby="resultat-title">
+        <article id="seccio-resultat">
+            <header class="resultat-header">
+                <div class="resultat-header-main">
+                    <h2 id="resultat-title">Resultat de l'agrupació</h2>
+                    <div class="resultat-meta" id="resultat-meta"></div>
+                </div>
+                <div class="resultat-header-tools">
+                    <span id="badge-incidencies" hidden></span>
+                    <button type="button" id="btn-imprimir" class="btn btn-primary">🖨 Imprimir</button>
+                    <button type="button" id="btn-exportar-csv" class="btn btn-ghost">Exportar CSV</button>
+                    <button type="button" id="btn-tanca-resultat" class="btn btn-ghost dialog-close-btn" aria-label="Tanca">×</button>
+                </div>
+            </header>
+
+            <div class="resultat-body">
+                <!-- Capçalera de paper (només visible a la impressió) -->
+                <div class="print-only print-paper-header" aria-hidden="true">
+                    <div class="print-empresa">
+                        <strong>AGRI-ENERGIA, S.A.</strong>
+                        <div class="print-page">Pàgina <span class="page-num">1</span></div>
+                    </div>
+                    <div class="print-datetime" id="print-datetime"></div>
+                </div>
+                <h1 class="print-only print-title">AGRUPACIÓ DE LA CÀRREGA</h1>
+                <div class="print-only print-info">
+                    <div><strong>Data:</strong> <span id="print-data-sortida"></span></div>
+                    <div><strong>Transportista:</strong> <span id="print-transportista"></span></div>
+                </div>
+                <div class="print-only print-leg" id="print-leg"></div>
+
+                <div class="print-only print-footer" id="print-meta"></div>
+                <div id="kpis" class="kpis"></div>
+
+                <h3 class="section-title">Palets físics per tipus</h3>
+                <ul id="palets-per-tipus" class="palets-tipus-grid"></ul>
+
+                <h3 class="section-title">Càrregues incloses</h3>
+                <div id="carregues-incloses" class="chips"></div>
+
+                <h3 class="section-title">Productes</h3>
+                <div class="table-wrap">
+                    <table class="data-table sortable" id="taula-productes">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th data-sort="art_codi">Article</th>
+                                <th data-sort="art_descrip">Descripció</th>
+                                <th data-sort="tunitat">TUnitat</th>
+                                <th>Càrregues</th>
+                                <th class="num" data-sort="total_sacs">Total sacs</th>
+                                <th class="num" data-sort="total_kg">Total kg</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <div id="incidencies" hidden>
+                    <h3 class="section-title">Incidències <span id="count-incidencies" class="muted"></span></h3>
+                    <ul id="llista-incidencies" class="incidents"></ul>
+                </div>
+            </div>
+        </article>
+    </dialog>
+
+    <dialog id="help-dialog" class="help-dialog">
+        <header><h3>Dreceres de teclat</h3><button class="dialog-close" data-close>×</button></header>
+        <ul class="kbd-list">
+            <li><kbd>Enter</kbd> al formulari — Cerca</li>
+            <li><kbd>Ctrl</kbd>+<kbd>A</kbd> a la llista — Marca totes</li>
+            <li><kbd>Shift</kbd>+clic — Selecciona rang</li>
+            <li>Clic a la fila — Commuta selecció</li>
+            <li><kbd>Esc</kbd> — Tanca avisos / cancel·la cerca</li>
+        </ul>
+    </dialog>
+
+</main>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

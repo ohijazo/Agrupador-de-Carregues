@@ -1,0 +1,86 @@
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class CarregaResumen:
+    carrega_id: str          # "2026/01/0001234"
+    eje: str
+    sca: str
+    car: str
+    tra_codi: str
+    transportista: str       # nom (TRANS.tra_nom)
+    data_sortida: Optional[str] = None
+    matricula: str = ""
+    conductor: str = ""
+    observacions: str = ""
+    descripcio: str = ""     # nom curt: "MATAS 14", "CARLES", ...
+
+
+@dataclass
+class PaletDetall:
+    """Un palet físic dins una càrrega, amb el seu contingut d'un article concret."""
+    tipus_palet: str          # art_codi del palet (01030, BasePalet, etc.)
+    tipus_palet_descrip: str
+    sacs: int                 # nombre de sacs d'aquest article en aquest palet
+    sacs_x_base: int = 0      # sacs per capa/base del palet (com a l'app de comandes)
+    max_sacs: int = 0         # capacitat màxima del palet
+    albara: str = ""          # "sal/cpa" — albarà o comanda d'origen
+    det_tipo: str = ""        # 'A' = albarà · 'P' = comanda pendent
+
+
+@dataclass
+class CarregaPerProducte:
+    """Desglossament d'embalatges d'un producte dins d'una càrrega concreta."""
+    carrega_id: str
+    transportista: str
+    tra_codi: str
+    total_sacs: int = 0
+    total_kg: float = 0.0
+    palets: list[PaletDetall] = field(default_factory=list)
+
+
+@dataclass
+class AgrupacioProducte:
+    """Resultat agregat d'un producte a través de totes les càrregues seleccionades."""
+    art_codi: str
+    art_descrip: str
+    tunitat: str = ""
+    total_sacs: int = 0
+    total_kg: float = 0.0
+    per_carrega: list[CarregaPerProducte] = field(default_factory=list)
+
+
+@dataclass
+class Incidencia:
+    carrega_id: str
+    albara: str               # "sal/cpa"
+    tipus: str                # 'error' | 'warning'
+    missatge: str
+
+
+@dataclass
+class TipusPaletPerCarrega:
+    """Quants palets físics d'un tipus es preparen per a una càrrega concreta."""
+    carrega_id: str
+    quantitat: int
+
+
+@dataclass
+class TipusPaletRecompte:
+    """Recompte de palets físics agrupats per tipus a tot el resultat."""
+    tipus_palet: str
+    tipus_palet_descrip: str
+    quantitat: int
+    per_carrega: list[TipusPaletPerCarrega] = field(default_factory=list)
+
+
+@dataclass
+class ResultatAgrupacio:
+    carregues: list[CarregaResumen] = field(default_factory=list)
+    productes: list[AgrupacioProducte] = field(default_factory=list)
+    incidencies: list[Incidencia] = field(default_factory=list)
+    total_palets_fisics: int = 0
+    total_sacs: int = 0
+    total_kg: float = 0.0
+    tipus_palets: list[TipusPaletRecompte] = field(default_factory=list)

@@ -1,0 +1,252 @@
+"""Lògica d'agrupació de càrregues.
+
+Per a cada càrrega seleccionada:
+  1. Llegeix els albarans (Detcargas).
+  2. Per a cada albarà, crida motor.calcular_embalatges() de l'app germana.
+  3. Acumula els embalatges per (art_codi, transportista).
+
+El motor s'importa via sys.path injectat a app.py.
+"""
+from collections import defaultdict
+from typing import Iterable
+
+from consultes_carregues import obtenir_albarans_carrega
+from models_agrupacio import (
+    AgrupacioProducte, CarregaPerProducte, CarregaResumen,
+    Incidencia, PaletDetall, ResultatAgrupacio, TipusPaletRecompte,
+    TipusPaletPerCarrega,
+)
+
+
+def _pes_per_tunitat(tunitat: str) -> float:
+    """S25 -> 25, S10 -> 10, etc. GRA/UNI -> 0."""
+    if tunitat and tunitat.startswith("S"):
+        try:
+            return float(tunitat[1:])
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
+    """Agrupa N càrregues en un únic resultat consolidat per producte.
+
+    carregues_sel: llista de dicts amb keys
+        eje_ejercicio, sca_serie, car_numero, transportista, tra_codi,
+        carrega_id, car_fecsalida, car_matricula, car_nomconductor, car_observaciones.
+    """
+    # Import diferit: motor de l'app germana, ja al sys.path quan arribem aquí.
+    from motor import calcular_embalatges  # type: ignore
+    from models import Estat  # type: ignore  # noqa: F401
+
+    resultat = ResultatAgrupacio()
+
+    # Cache d'albarans (eje, sal, cpa) per evitar recalcular si surt 2 cops.
+    cache_albara: dict[tuple[str, str, str], object] = {}
+
+    # Estructura intermèdia: (art_codi) -> {
+    #     "descrip", "tunitat",
+    #     "per_carrega": (carrega_id) -> CarregaPerProducte
+    # }
+    acum: dict[str, dict] = {}
+
+    palets_fisics_totals = 0
+    palets_per_tipus: dict[str, dict] = {}
+
+    for c in carregues_sel:
+        resultat.carregues.append(CarregaResumen(
+            carrega_id=c["carrega_id"],
+            eje=c["eje_ejercicio"],
+            sca=c["sca_serie"],
+            car=c["car_numero"],
+            tra_codi=c.get("tra_codi", ""),
+            transportista=c.get("transportista", ""),
+            data_sortida=c.get("car_fecsalida"),
+            matricula=c.get("car_matricula", ""),
+            conductor=c.get("car_nomconductor", ""),
+            observacions=c.get("car_observaciones", ""),
+            descripcio=c.get("car_descripcion", ""),
+        ))
+
+        albarans = obtenir_albarans_carrega(
+            c["eje_ejercicio"], c["sca_serie"], c["car_numero"]
+        )
+        if not albarans:
+            resultat.incidencies.append(Incidencia(
+                carrega_id=c["carrega_id"],
+                albara="-",
+                tipus="warning",
+                missatge="La càrrega no té albarans de tipus 'A' a Detcargas.",
+            ))
+            continue
+
+        for a in albarans:
+            key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"])
+            try:
+                if key in cache_albara:
+                    res = cache_albara[key]
+                else:
+                    res = calcular_embalatges(a["sal_codigo"], a["cpa_albara"])
+                    cache_albara[key] = res
+            except Exception as e:
+                resultat.incidencies.append(Incidencia(
+                    carrega_id=c["carrega_id"],
+                    albara=f"{a['sal_codigo']}/{a['cpa_albara']}",
+                    tipus="error",
+                    missatge=f"Error calculant: {e}",
+                ))
+                continue
+
+            if not res.embalatges:
+                resultat.incidencies.append(Incidencia(
+                    carrega_id=c["carrega_id"],
+                    albara=f"{a['sal_codigo']}/{a['cpa_albara']}",
+                    tipus="warning",
+                    missatge=f"Sense embalatges calculables (estat: {res.estat.value if hasattr(res.estat, 'value') else res.estat}).",
+                ))
+                continue
+
+            # Mapa art_codi -> descripció / tunitat / pes_per_sac des de línies
+            info_articles: dict[str, dict] = {}
+            for l in res.linies:
+                info_articles[l.art_codi] = {
+                    "descrip": l.art_descrip,
+                    "tunitat": l.tunitat,
+                    "pes_sac": _pes_per_tunitat(l.tunitat),
+                }
+
+            # Descripcions de tipus_palet — surten de PaletResum
+            descrip_palet: dict[str, str] = {
+                p.art_codi: p.art_descrip for p in res.palets
+            }
+
+            # Recórrer embalatges: cada embalatge té un tipus_palet i una llista de contingut.
+            for emb in res.embalatges:
+                tipus = emb.tipus_palet or "?"
+                tipus_descrip = descrip_palet.get(tipus, tipus)
+                if not emb.es_embalatge_propi:
+                    palets_fisics_totals += 1
+                    bucket_pt = palets_per_tipus.setdefault(
+                        tipus, {"descrip": tipus_descrip, "n": 0, "per_carrega": {}}
+                    )
+                    bucket_pt["n"] += 1
+                    bucket_pt["per_carrega"][c["carrega_id"]] = \
+                        bucket_pt["per_carrega"].get(c["carrega_id"], 0) + 1
+                    if not bucket_pt["descrip"]:
+                        bucket_pt["descrip"] = tipus_descrip
+
+                for cont in emb.contingut:
+                    art = cont.art_codi
+                    sacs = int(cont.sacs)
+                    if sacs <= 0:
+                        continue
+                    info = info_articles.get(art, {})
+                    descrip = info.get("descrip", cont.art_descrip)
+                    tunitat = info.get("tunitat", "")
+                    pes_sac = info.get("pes_sac", 0.0)
+                    kg = sacs * pes_sac
+
+                    bucket = acum.setdefault(art, {
+                        "descrip": descrip,
+                        "tunitat": tunitat,
+                        "per_carrega": {},
+                    })
+                    cpc = bucket["per_carrega"].setdefault(
+                        c["carrega_id"],
+                        CarregaPerProducte(
+                            carrega_id=c["carrega_id"],
+                            transportista=c.get("transportista", ""),
+                            tra_codi=c.get("tra_codi", ""),
+                        ),
+                    )
+                    cpc.total_sacs += sacs
+                    cpc.total_kg += kg
+                    # Base efectiva: si l'article té base pròpia (RF11 + cantidadapilable),
+                    # preval; altrament la base del palet (com mostra l'app germana).
+                    base_efectiva = int(cont.sacs_x_base) if cont.sacs_x_base else int(emb.sacs_x_base or 0)
+                    cpc.palets.append(PaletDetall(
+                        tipus_palet=tipus,
+                        tipus_palet_descrip=tipus_descrip,
+                        sacs=sacs,
+                        sacs_x_base=base_efectiva,
+                        max_sacs=int(emb.max_sacs or 0),
+                        albara=f"{a['sal_codigo']}/{a['cpa_albara']}",
+                        det_tipo=a.get("det_tipo", ""),
+                    ))
+
+    # Construir AgrupacioProducte finals
+    for art_codi, bucket in sorted(acum.items()):
+        per_carrega = list(bucket["per_carrega"].values())
+        total_sacs = sum(x.total_sacs for x in per_carrega)
+        total_kg   = sum(x.total_kg   for x in per_carrega)
+        resultat.productes.append(AgrupacioProducte(
+            art_codi=art_codi,
+            art_descrip=bucket["descrip"],
+            tunitat=bucket["tunitat"],
+            total_sacs=total_sacs,
+            total_kg=total_kg,
+            per_carrega=per_carrega,
+        ))
+        resultat.total_sacs += total_sacs
+        resultat.total_kg   += total_kg
+
+    resultat.total_palets_fisics = palets_fisics_totals
+    carrega_idx = {c.carrega_id: i for i, c in enumerate(resultat.carregues)}
+    resultat.tipus_palets = [
+        TipusPaletRecompte(
+            tipus_palet=tipus,
+            tipus_palet_descrip=info["descrip"] or tipus,
+            quantitat=info["n"],
+            per_carrega=[
+                TipusPaletPerCarrega(carrega_id=cid, quantitat=q)
+                for cid, q in sorted(
+                    info["per_carrega"].items(),
+                    key=lambda kv: carrega_idx.get(kv[0], 9999),
+                )
+            ],
+        )
+        for tipus, info in sorted(
+            palets_per_tipus.items(), key=lambda kv: (-kv[1]["n"], kv[0])
+        )
+    ]
+    return resultat
+
+
+def serialitzar(r: ResultatAgrupacio) -> dict:
+    return {
+        "carregues": [vars(c) for c in r.carregues],
+        "productes": [
+            {
+                "art_codi": p.art_codi,
+                "art_descrip": p.art_descrip,
+                "tunitat": p.tunitat,
+                "total_sacs": p.total_sacs,
+                "total_kg": round(p.total_kg, 2),
+                "per_carrega": [
+                    {
+                        "carrega_id": pc.carrega_id,
+                        "transportista": pc.transportista,
+                        "tra_codi": pc.tra_codi,
+                        "total_sacs": pc.total_sacs,
+                        "total_kg": round(pc.total_kg, 2),
+                        "palets": [vars(pd) for pd in pc.palets],
+                    }
+                    for pc in p.per_carrega
+                ],
+            }
+            for p in r.productes
+        ],
+        "incidencies": [vars(i) for i in r.incidencies],
+        "total_palets_fisics": r.total_palets_fisics,
+        "total_sacs": r.total_sacs,
+        "total_kg": round(r.total_kg, 2),
+        "tipus_palets": [
+            {
+                "tipus_palet": t.tipus_palet,
+                "tipus_palet_descrip": t.tipus_palet_descrip,
+                "quantitat": t.quantitat,
+                "per_carrega": [vars(pc) for pc in t.per_carrega],
+            }
+            for t in r.tipus_palets
+        ],
+    }

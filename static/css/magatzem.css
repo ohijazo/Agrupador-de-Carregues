@@ -327,8 +327,8 @@
     .mag-body {
         background: #fff !important;
         color: #000 !important;
-        font-size: 8.5pt !important;
-        line-height: 1.2 !important;
+        font-size: 9pt !important;
+        line-height: 1.25 !important;
     }
 
     /* Amaga el que no aporta al paper */
@@ -370,19 +370,21 @@
     .mag-card {
         background: #fff !important;
         border: none !important;
-        border-bottom: .4pt solid #bbb !important;
+        border-top: .6pt solid #000 !important;
         border-radius: 0 !important;
         box-shadow: none !important;
-        padding: 0.5mm 1mm !important;
+        padding: 0.7mm 1mm !important;
         margin: 0 !important;
         page-break-inside: avoid;
         display: grid !important;
-        grid-template-columns: 1fr 7mm !important;
-        column-gap: 2mm !important;
+        grid-template-columns: 1fr 10mm !important;
+        column-gap: 2.5mm !important;
         align-items: center !important;
         opacity: 1 !important;
     }
-    .mag-card.is-preparat { background: #fff !important; }
+    .mag-articles > .mag-card:first-child { border-top: 1pt solid #000 !important; }
+    .mag-articles > .mag-card:last-child { border-bottom: .6pt solid #000 !important; }
+    .mag-card.is-preparat { background: #fff !important; border-top-style: dashed !important; }
     .mag-card.is-preparat .mag-art-descrip { text-decoration: line-through; color: #555 !important; }
 
     .mag-art { gap: .3mm !important; }
@@ -391,12 +393,12 @@
         align-items: baseline !important;
     }
     .mag-art-descrip {
-        font-size: 9.5pt !important;
+        font-size: 10pt !important;
         font-weight: 700 !important;
         line-height: 1.1 !important;
     }
     .mag-art-codi {
-        font-size: 7pt !important;
+        font-size: 8pt !important;
         background: transparent !important;
         color: #555 !important;
         border: none !important;
@@ -409,7 +411,7 @@
 
     /* Pastilla dels sacs: sense recuadre, només números grans amb kg inline */
     .mag-art-sacs-big {
-        font-size: 11.5pt !important;
+        font-size: 12.5pt !important;
         background: transparent !important;
         border: none !important;
         padding: 0 !important;
@@ -421,14 +423,14 @@
         white-space: nowrap !important;
     }
     .mag-art-sacs-lbl {
-        font-size: 6.8pt !important;
+        font-size: 7pt !important;
         color: #555 !important;
         font-weight: 600 !important;
         margin-left: .2mm !important;
     }
     .mag-art-sacs-kg {
         display: inline !important;
-        font-size: 7.5pt !important;
+        font-size: 8pt !important;
         color: #444 !important;
         font-weight: 500 !important;
         margin-left: 1.5mm !important;
@@ -454,38 +456,41 @@
         padding: 0 !important;
         margin: 0 2mm 0 0 !important;
         border-radius: 0 !important;
-        font-size: 7pt !important;
-        line-height: 1.2 !important;
+        font-size: 7.5pt !important;
+        line-height: 1.25 !important;
         white-space: nowrap !important;
     }
     .mag-carrega-row .dot {
         display: inline-block !important;
-        width: 5.5pt !important;
-        height: 5.5pt !important;
-        border: .5pt solid #000 !important;
+        width: 6.5pt !important;
+        height: 6.5pt !important;
+        border: .7pt solid #000 !important;
         background: var(--cb-color) !important;
         border-radius: 50% !important;
         vertical-align: middle !important;
-        margin: 0 .4mm 0 0 !important;
+        margin: 0 .5mm 0 0 !important;
     }
     .mag-carrega-row .nom {
         color: #000 !important;
         font-weight: 700 !important;
-        font-size: 7pt !important;
+        font-size: 7.5pt !important;
     }
     .mag-carrega-row .num {
-        font-family: 'JetBrains Mono', monospace !important;
-        color: #555 !important;
-        font-weight: 500 !important;
-        font-size: 6.5pt !important;
-        margin: 0 .3mm !important;
+        font-family: inherit !important;
+        color: #000 !important;
+        font-weight: 700 !important;
+        font-size: 8pt !important;
+        background: #efefef !important;
+        padding: 0 1pt !important;
+        border-radius: 2pt !important;
+        margin: 0 .4mm !important;
     }
     .mag-carrega-row .detall {
         color: #000 !important;
         font-weight: 600 !important;
         font-variant-numeric: tabular-nums !important;
         letter-spacing: -.05pt !important;
-        font-size: 7pt !important;
+        font-size: 7.5pt !important;
     }
     .mag-carrega-row::after {
         content: " · ";
@@ -497,9 +502,9 @@
     /* Quadrat manual per marcar a mà — substitueix el botó tàctil */
     .mag-prep-check {
         display: inline-block !important;
-        width: 7mm !important;
-        height: 7mm !important;
-        border: 1pt solid #000 !important;
+        width: 10mm !important;
+        height: 10mm !important;
+        border: 1.2pt solid #000 !important;
         background: #fff !important;
         border-radius: 1.5px !important;
         padding: 0 !important;
@@ -523,12 +528,44 @@
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 6mm;
-        height: 1.4pt;
+        width: 8.5mm;
+        height: 1.6pt;
         background: #000;
     }
     .mag-card.is-preparat .mag-prep-check::before { transform: translate(-50%, -50%) rotate(45deg); }
     .mag-card.is-preparat .mag-prep-check::after  { transform: translate(-50%, -50%) rotate(-45deg); }
 
     .mag-error { display: none !important; }
+
+    /* Resum al peu del darrer full: palets per tipus + pes per càrrega */
+    .mag-print-footer {
+        margin-top: 3mm !important;
+        padding-top: 1.5mm !important;
+        border-top: 1.2pt solid #000 !important;
+        page-break-inside: avoid;
+        font-size: 8.5pt !important;
+        line-height: 1.4 !important;
+    }
+    .mag-pf-row {
+        margin: 0 0 0.6mm !important;
+    }
+    .mag-pf-row strong {
+        font-size: 8.5pt !important;
+        text-transform: uppercase !important;
+        letter-spacing: .04em !important;
+        margin-right: 1.5mm !important;
+        font-weight: 700 !important;
+    }
+    .mag-pf-c {
+        margin-right: 1.2mm !important;
+        white-space: nowrap !important;
+        font-weight: 600 !important;
+    }
+    .mag-pf-c::before {
+        content: "●";
+        color: var(--cb-color);
+        margin-right: .3mm;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
 }

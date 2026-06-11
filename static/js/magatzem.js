@@ -294,6 +294,42 @@ window.magatzemPrep = async function magatzemPrep(id) {
                     ${fmtN.format(r?.carregues?.length || 0)} càrregues · ${fmtN.format(totalS)} sacs · ${fmtN.format(totalP)} palets
                     · Imprès ${fmtData(ara)}
                 </div>`;
+
+            // Footer: resum palets per tipus + pes total per càrrega
+            const foot = $m("#mag-print-footer");
+            if (foot && r) {
+                // 1) Palets per tipus (ja agregats al backend, abreviem el descrip)
+                const tipusHtml = (r.tipus_palets || []).map(t => {
+                    const ab = (typeof abreviarTipusPalet === "function")
+                        ? abreviarTipusPalet(t.tipus_palet_descrip) || t.tipus_palet_descrip
+                        : t.tipus_palet_descrip;
+                    return `<span>${fmtN.format(t.quantitat)} ${escapeM(ab)}</span>`;
+                }).join(" · ");
+
+                // 2) Pes per càrrega: agregació sobre productes[].per_carrega[]
+                const pesPerCar = new Map();  // carrega_id → total_kg
+                for (const p of (r.productes || [])) {
+                    for (const pc of (p.per_carrega || [])) {
+                        pesPerCar.set(pc.carrega_id, (pesPerCar.get(pc.carrega_id) || 0) + (pc.total_kg || 0));
+                    }
+                }
+                // Mantenim l'ordre de r.carregues per coherència amb els colors
+                const pesHtml = (r.carregues || []).map((c, i) => {
+                    const col = (typeof colorPerCarregaIdx === "function")
+                        ? colorPerCarregaIdx(i) : { color: "#000" };
+                    const pes = pesPerCar.get(c.carrega_id) || 0;
+                    const nomCar = (c.descripcio || c.carrega_id).trim() || c.carrega_id;
+                    const numFinal = String(c.carrega_id).split("/").pop() || "";
+                    const numCurt = numFinal.replace(/^0+/, "") || numFinal;
+                    return `<span class="mag-pf-c" style="--cb-color:${col.color}">${escapeM(nomCar)} #${escapeM(numCurt)} · ${fmtKgN.format(pes)} kg</span>`;
+                }).join(" · ");
+
+                foot.innerHTML = `
+                    ${tipusHtml ? `<div class="mag-pf-row mag-pf-palets"><strong>Total palets:</strong> ${tipusHtml}</div>` : ""}
+                    ${pesHtml ? `<div class="mag-pf-row mag-pf-pes"><strong>Pes per càrrega:</strong> ${pesHtml}</div>` : ""}
+                `;
+            }
+
             window.print();
         });
     }

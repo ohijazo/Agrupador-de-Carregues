@@ -926,37 +926,111 @@ function omplirCapçaleraPrint() {
     }
 }
 
+// Genera l'HTML d'impressió de l'oficina amb el mateix layout que el magatzem
+// (cards d'article, número curt #NNN, [N×M TIPUS], capçalera i footer amb totals).
+function generaImpressioOficina(r) {
+    const fmtN = fmt;
+
+    // Capçalera
+    const ara = new Date();
+    const desdeIso = $("#desde")?.value, finsIso = $("#fins")?.value;
+    const desdeFmt = desdeIso ? fmtData(desdeIso) : "—";
+    const finsFmt = finsIso ? fmtData(finsIso) : "—";
+    const traNoms = [...new Set(r.carregues.map(c => (c.descripcio || c.transportista || "").trim()).filter(Boolean))];
+    const carrsTxt = traNoms.slice(0, 6).join(" · ") + (traNoms.length > 6 ? ` · +${traNoms.length - 6}` : "");
+    const titol = `Agrupació ${desdeFmt} → ${finsFmt}`;
+    const meta = `${carrsTxt ? carrsTxt + " · " : ""}${fmtN.format(r.carregues.length)} càrregues · ${fmtN.format(r.total_sacs)} sacs · ${fmtN.format(r.total_palets_fisics)} palets · Imprès ${fmtData(ara)}`;
+    const headerHtml = `
+        <div class="mag-print-header">
+            <div class="mag-print-title">${escapeHtml(titol)}</div>
+            <div class="mag-print-meta">${escapeHtml(meta)}</div>
+        </div>`;
+
+    // Ordre de càrregues per a colors estables (mateix que la pantalla)
+    const ordreIdx = new Map();
+    r.carregues.forEach((c, i) => ordreIdx.set(c.carrega_id, i));
+
+    // Articles (ordenats com a la taula)
+    const prods = productesOrdenats();
+    const cardsHtml = prods.map(p => {
+        const pcOrdenats = (p.per_carrega || []).slice().sort((a, b) =>
+            (ordreIdx.get(a.carrega_id) ?? 999) - (ordreIdx.get(b.carrega_id) ?? 999)
+        );
+        const carregesHtml = pcOrdenats.map(pc => {
+            const col = state.colorsCarrega.get(pc.carrega_id) || { color: "#718096" };
+            const peces = detallPaletsCarrega(pc);
+            const carrega = r.carregues.find(c => c.carrega_id === pc.carrega_id);
+            const nomCar = (carrega?.descripcio || pc.carrega_id).trim() || pc.carrega_id;
+            const numFinal = String(pc.carrega_id).split("/").pop() || "";
+            const numCurt = numFinal.replace(/^0+/, "") || numFinal;
+            return `<span class="mag-carrega-row" style="--cb-color:${col.color}">
+                        <span class="dot" aria-hidden="true"></span>
+                        <span class="nom">${escapeHtml(nomCar)}</span>
+                        <span class="num">#${escapeHtml(numCurt)}</span>
+                        <span class="detall">${escapeHtml(peces)} · ${fmtN.format(pc.total_sacs)} sacs</span>
+                    </span>`;
+        }).join("");
+        return `
+            <li class="mag-card">
+                <div class="mag-art">
+                    <div class="mag-art-top">
+                        <span class="mag-art-descrip">${escapeHtml(p.art_descrip)}</span>
+                        <span class="mag-art-codi">${escapeHtml(p.art_codi)}</span>
+                        <span class="mag-art-sacs-big">${fmtN.format(p.total_sacs)} <span class="mag-art-sacs-lbl">sacs</span><span class="mag-art-sacs-kg">${fmtKg.format(p.total_kg)} kg</span></span>
+                    </div>
+                    <div class="mag-art-carregues">${carregesHtml}</div>
+                </div>
+                <button type="button" class="mag-prep-check" aria-hidden="true"></button>
+            </li>`;
+    }).join("");
+
+    // Footer: totals palets per tipus + pes per càrrega
+    const tipusHtml = (r.tipus_palets || []).map(t => {
+        const ab = (typeof abreviarTipusPalet === "function")
+            ? abreviarTipusPalet(t.tipus_palet_descrip) || t.tipus_palet_descrip
+            : t.tipus_palet_descrip;
+        return `<span>${fmtN.format(t.quantitat)} ${escapeHtml(ab)}</span>`;
+    }).join(" · ");
+    const pesPerCar = new Map();
+    for (const p of (r.productes || [])) {
+        for (const pc of (p.per_carrega || [])) {
+            pesPerCar.set(pc.carrega_id, (pesPerCar.get(pc.carrega_id) || 0) + (pc.total_kg || 0));
+        }
+    }
+    const pesHtml = (r.carregues || []).map(c => {
+        const col = state.colorsCarrega.get(c.carrega_id) || { color: "#000" };
+        const pes = pesPerCar.get(c.carrega_id) || 0;
+        const nomCar = (c.descripcio || c.carrega_id).trim() || c.carrega_id;
+        const numFinal = String(c.carrega_id).split("/").pop() || "";
+        const numCurt = numFinal.replace(/^0+/, "") || numFinal;
+        return `<span class="mag-pf-c" style="--cb-color:${col.color}">${escapeHtml(nomCar)} #${escapeHtml(numCurt)} · ${fmtKg.format(pes)} kg</span>`;
+    }).join(" · ");
+    const footerHtml = `
+        <footer class="mag-print-footer">
+            ${tipusHtml ? `<div class="mag-pf-row mag-pf-palets"><strong>Total palets:</strong> ${tipusHtml}</div>` : ""}
+            ${pesHtml ? `<div class="mag-pf-row mag-pf-pes"><strong>Pes per càrrega:</strong> ${pesHtml}</div>` : ""}
+        </footer>`;
+
+    return `${headerHtml}<ul class="mag-articles">${cardsHtml}</ul>${footerHtml}`;
+}
+
 function imprimirInforme() {
     if (!state.resultat) return;
     omplirCapçaleraPrint();
 
-    // Injecta els palets inline per cada fila de producte (al td descripció)
-    const tbody = $("#taula-productes tbody");
-    const injectats = [];
-    if (tbody) {
-        const productes = productesOrdenats();
-        const files = tbody.querySelectorAll("tr:not(.row-detall)");
-        files.forEach((tr, idx) => {
-            const p = productes[idx];
-            if (!p) return;
-            const tdDescrip = tr.children[3]; // 0:toggle, 1:art_codi, 2:descrip oops, watch
-            // L'ordre real és: 0 toggle, 1 art_codi, 2 art_descrip, 3 tunitat, 4 total_sacs, 5 total_kg
-            const tdArt = tr.children[2];
-            if (!tdArt) return;
-            const span = document.createElement("span");
-            span.className = "print-palets-inline";
-            span.innerHTML = " " + palletsInlinePerProducte(p);
-            tdArt.appendChild(span);
-            injectats.push(span);
-        });
-    }
+    // Injecta el contenidor d'impressió amb el layout del magatzem
+    const old = document.getElementById("oficina-print");
+    if (old) old.remove();
+    const root = document.createElement("div");
+    root.id = "oficina-print";
+    root.className = "mag-body";   // perquè magatzem.css @media print apliqui font-size etc.
+    root.innerHTML = generaImpressioOficina(state.resultat);
+    document.body.appendChild(root);
 
     window.print();
 
-    // Neteja: treu els spans injectats
-    setTimeout(() => {
-        for (const sp of injectats) sp.remove();
-    }, 300);
+    // Neteja després d'imprimir
+    setTimeout(() => root.remove(), 400);
 }
 
 function obrirModalResultat() {

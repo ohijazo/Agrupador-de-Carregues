@@ -534,13 +534,14 @@ function actualitzarPeuPaginacio() {
     }
 }
 
-// Resol l'estat d'agrupació d'una càrrega: null, "activa" o "finalitzada".
+// Resol l'estat d'agrupació d'una càrrega: null o info de l'agrupació
+// (qualsevol presència bloqueja: una càrrega només pot estar en una agrupació).
 function estatAgrupacio(c) {
     const ags = c.agrupacions || [];
     if (!ags.length) return null;
     const activa = ags.find(a => !a.finalitzada);
-    if (activa) return { tipus: "activa", info: activa, totes: ags };
-    return { tipus: "finalitzada", info: ags[0], totes: ags };
+    const info = activa || ags[0];
+    return { tipus: activa ? "activa" : "finalitzada", info, totes: ags };
 }
 
 function badgeAgrupacioHTML(estat) {
@@ -596,14 +597,14 @@ function actualitzaFilaCarrega(tr, c, idx) {
     tr.dataset.idx = idx;
     const cb = tr.querySelector('input[data-role="carrega-check"]');
     const estat = estatAgrupacio(c);
-    const bloquejada = estat?.tipus === "activa";
+    const bloquejada = estat != null;
     const seleccionada = state.seleccio.has(c.carrega_id);
     if (cb) {
         cb.disabled = bloquejada;
         if (cb.checked !== seleccionada) cb.checked = seleccionada;
     }
     tr.classList.toggle("row-selected", seleccionada);
-    tr.classList.toggle("row-grouped", bloquejada);
+    tr.classList.toggle("row-grouped", bloquejada && estat?.tipus === "activa");
     tr.classList.toggle("row-grouped-done", estat?.tipus === "finalitzada");
 }
 
@@ -686,7 +687,7 @@ function renderLlistaCarregues() {
 // Gestió de selecció (amb shift+click per rang)
 // ============================================================
 function gestionaSeleccio(carregaId, idx, shift, checked) {
-    const bloquejada = (c) => estatAgrupacio(c)?.tipus === "activa";
+    const bloquejada = (c) => estatAgrupacio(c) != null;
     if (shift && state.lastClickedIndex >= 0) {
         const visibles = llistaVisible();
         const start = Math.min(state.lastClickedIndex, idx);
@@ -700,7 +701,7 @@ function gestionaSeleccio(carregaId, idx, shift, checked) {
     } else {
         const c = state.carregues.find(x => x.carrega_id === carregaId);
         if (c && bloquejada(c)) {
-            showToast("warning", "Càrrega ja agrupada", `Aquesta càrrega ja és en una agrupació activa.`);
+            showToast("warning", "Càrrega ja agrupada", `Aquesta càrrega ja és en una agrupació. Elimina-la primer si vols tornar-la a agrupar.`);
             return;
         }
         if (checked) state.seleccio.add(carregaId);
@@ -711,7 +712,7 @@ function gestionaSeleccio(carregaId, idx, shift, checked) {
 }
 
 function marcarTotes(valor) {
-    const bloquejada = (c) => estatAgrupacio(c)?.tipus === "activa";
+    const bloquejada = (c) => estatAgrupacio(c) != null;
     if (valor) {
         for (const c of llistaVisible()) {
             if (!bloquejada(c)) state.seleccio.add(c.carrega_id);
@@ -853,7 +854,7 @@ function renderDetallCarrega(data) {
 // ============================================================
 // Agrupar
 // ============================================================
-async function agrupar(force = false) {
+async function agrupar() {
     const sel = state.carregues.filter(c => state.seleccio.has(c.carrega_id));
     if (sel.length === 0) return;
     if (sel.length > 50) {
@@ -867,8 +868,7 @@ async function agrupar(force = false) {
     const btn = $("#btn-agrupar");
     btnLoading(btn, true, "Agrupant…");
     try {
-        const url = force ? "/api/agrupar?force=1" : "/api/agrupar";
-        const resp = await fetch(url, {
+        const resp = await fetch("/api/agrupar", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ carregues: sel }),
@@ -902,7 +902,8 @@ async function agrupar(force = false) {
 }
 
 function mostrarConflicteDuplicats(duplicats) {
-    // Diàleg HTML simple per llistar les càrregues conflictives i deixar continuar igualment.
+    // Una càrrega només pot estar en una agrupació. El diàleg llista les
+    // conflictives amb enllaç al magatzem; cal eliminar la vella per agrupar de nou.
     let dlg = $("#duplicats-dialog");
     if (!dlg) {
         dlg = document.createElement("dialog");
@@ -921,20 +922,15 @@ function mostrarConflicteDuplicats(duplicats) {
             <button class="dialog-close" data-close aria-label="Tanca">×</button>
         </header>
         <div style="padding: 1rem 1.25rem">
-            <p>Les següents càrregues ja són en una agrupació activa:</p>
+            <p>Les següents càrregues ja són en una agrupació:</p>
             <ul style="margin: .5rem 0 1rem; padding-left: 1.25rem">${files}</ul>
-            <p class="muted" style="font-size:.85rem">Desmarca-les o continua igualment (es duplicaran a magatzem).</p>
+            <p class="muted" style="font-size:.85rem">Una càrrega només pot estar en una agrupació. Elimina l'agrupació existent si vols tornar a agrupar-la.</p>
             <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:.75rem">
-                <button type="button" class="btn btn-ghost" data-close>Cancel·la</button>
-                <button type="button" class="btn btn-primary" id="duplicats-force">Agrupar igualment</button>
+                <button type="button" class="btn btn-primary" data-close>D'acord</button>
             </div>
         </div>
     `;
     dlg.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => dlg.close()));
-    dlg.querySelector("#duplicats-force").addEventListener("click", () => {
-        dlg.close();
-        agrupar(true);
-    });
     if (typeof dlg.showModal === "function" && !dlg.open) dlg.showModal();
 }
 
@@ -1645,7 +1641,6 @@ async function obrirDesades() {
                     </div>
                     <div class="desades-item-actions">
                         <button type="button" class="btn btn-primary btn-sm" data-act="carregar" data-id="${escapeHtml(it.id)}">Carrega</button>
-                        <button type="button" class="btn btn-ghost btn-sm" data-act="reobrir" data-id="${escapeHtml(it.id)}" title="Recarrega les càrregues a la llista i reagrupa amb dades actuals">Reobrir</button>
                         <button type="button" class="btn btn-ghost btn-sm" data-act="eliminar" data-id="${escapeHtml(it.id)}">Elimina</button>
                     </div>
                 `;
@@ -1673,29 +1668,6 @@ async function carregarAgrupacioDesada(id) {
         showToast("info", "Agrupació recuperada", obj.nom);
     } catch (e) {
         showToast("error", "Error carregant l'agrupació", e.message);
-    }
-}
-
-async function reobrirAgrupacioDesada(id) {
-    try {
-        const obj = await fetchJson(`/api/agrupacions/${encodeURIComponent(id)}`);
-        const carregues = obj.carregues || [];
-        if (!carregues.length) {
-            showToast("warning", "Agrupació buida", "Aquesta agrupació no té càrregues.");
-            return;
-        }
-        // Posa les càrregues a la llista i a la selecció, i tanca el diàleg.
-        state.carregues = carregues;
-        state.seleccio = new Set(carregues.map(c => c.carrega_id));
-        state.paginacio.total = carregues.length;
-        state.paginacio.offset = carregues.length;
-        renderLlistaCarregues();
-        $("#desades-dialog")?.close();
-        showToast("info", "Reobrint…", `${obj.nom} (${carregues.length} càrregues)`);
-        // Reagrupa amb force=1 perquè les càrregues ja són en l'agrupació original.
-        await agrupar(true);
-    } catch (e) {
-        showToast("error", "Error reobrint", e.message);
     }
 }
 
@@ -1809,7 +1781,6 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!btn) return;
             const id = btn.dataset.id;
             if (btn.dataset.act === "carregar") carregarAgrupacioDesada(id);
-            else if (btn.dataset.act === "reobrir") reobrirAgrupacioDesada(id);
             else if (btn.dataset.act === "eliminar") eliminarAgrupacioDesada(id);
         });
     }

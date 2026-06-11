@@ -318,32 +318,30 @@ def api_agrupar():
     if err:
         return _err_validacio(err)
 
-    # Validació duplicats: si alguna càrrega ja és en una agrupació activa
-    # (no finalitzada), retorna 409. Es pot saltar amb ?force=1.
-    force = request.args.get("force") in ("1", "true", "yes")
-    if not force:
-        index = agrupacions_store.index_carregues_agrupades()
-        duplicats = []
-        for c in carregues:
-            cid = c.get("carrega_id")
-            actives = [a for a in index.get(cid, []) if not a.get("finalitzada")]
-            if actives:
-                duplicats.append({"carrega_id": cid, "agrupacions": actives})
-        if duplicats:
-            log.info("agrupar: bloquejat per duplicats — %d càrregues afectades", len(duplicats))
-            return jsonify({
-                "error": "Algunes càrregues ja són en una agrupació activa.",
-                "duplicats": duplicats,
-            }), 409
+    # Validació duplicats: una càrrega només pot estar en una agrupació.
+    # Si ja és en qualsevol agrupació (activa o finalitzada), bloca amb 409.
+    index = agrupacions_store.index_carregues_agrupades()
+    duplicats = []
+    for c in carregues:
+        cid = c.get("carrega_id")
+        existents = index.get(cid, [])
+        if existents:
+            duplicats.append({"carrega_id": cid, "agrupacions": existents})
+    if duplicats:
+        log.info("agrupar: bloquejat per duplicats — %d càrregues afectades", len(duplicats))
+        return jsonify({
+            "error": "Algunes càrregues ja són en una agrupació.",
+            "duplicats": duplicats,
+        }), 409
 
     try:
-        log.info("agrupar: %d càrregues (force=%s)", len(carregues), force)
+        log.info("agrupar: %d càrregues", len(carregues))
         resultat = agrupar(carregues)
         out = serialitzar(resultat)
         log.info(
-            "audit agrupar ip=%s carregues=%d productes=%d palets=%d force=%s",
+            "audit agrupar ip=%s carregues=%d productes=%d palets=%d",
             request.remote_addr, len(carregues), len(out.get("productes", [])),
-            out.get("total_palets_fisics", 0), force,
+            out.get("total_palets_fisics", 0),
         )
         return jsonify(out)
     except pyodbc.Error:

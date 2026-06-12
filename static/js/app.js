@@ -1587,8 +1587,6 @@ function setupKeyboard() {
             tancaTotsToasts();
             if (state.abortCerca) state.abortCerca.abort();
             if (state.abortAgrupar) state.abortAgrupar.abort();
-            const dlg = $("#help-dialog");
-            if (dlg && dlg.open) dlg.close();
             const dlgRes = $("#resultat-dialog");
             if (dlgRes && dlgRes.open) dlgRes.close();
             return;
@@ -2181,13 +2179,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnAmplia = $("#btn-amplia-setmana");
     if (btnAmplia) btnAmplia.addEventListener("click", () => aplicaFiltreRapid("last-week"));
 
-    // Help dialog
-    const dlg = $("#help-dialog");
-    $("#btn-help").addEventListener("click", () => dlg.showModal());
-    dlg.querySelector("[data-close]").addEventListener("click", () => dlg.close());
-    dlg.addEventListener("click", (e) => {
-        if (e.target === dlg) dlg.close();
-    });
+    // El botó '?' del header és un enllaç directe a /ajuda; cap handler JS necessari.
     $("#btn-reset-amplades")?.addEventListener("click", restablirAmpladesColumnes);
 
     setupKeyboard();

@@ -129,6 +129,11 @@ def magatzem_llista():
     return render_template("magatzem_llista.html")
 
 
+@app.route("/ajuda")
+def ajuda():
+    return render_template("ajuda.html")
+
+
 @app.route("/magatzem/<id_>")
 def magatzem_prep(id_):
     obj = agrupacions_store.obtenir(id_)

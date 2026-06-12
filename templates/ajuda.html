@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ajuda — Agrupació de Càrregues</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <style>
+        .help-content { max-width: 960px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+        .help-content h2 {
+            color: var(--primary-dark);
+            font-size: 1.3rem;
+            margin: 2.2rem 0 .75rem;
+            padding-bottom: .4rem;
+            border-bottom: 2px solid var(--primary-light);
+        }
+        .help-content h3 {
+            color: var(--primary);
+            font-size: 1.05rem;
+            margin: 1.5rem 0 .55rem;
+        }
+        .help-content p, .help-content li {
+            font-size: .94rem;
+            line-height: 1.65;
+            color: var(--gray-700);
+        }
+        .help-content ul, .help-content ol { padding-left: 1.5rem; }
+        .help-content li { margin-bottom: .35rem; }
+        .help-content code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--gray-100);
+            padding: .12rem .4rem;
+            border-radius: 3px;
+            font-size: .85rem;
+            color: var(--primary-dark);
+        }
+        .help-content kbd {
+            background: var(--gray-100);
+            border: 1px solid var(--gray-300);
+            border-bottom-width: 2px;
+            border-radius: 4px;
+            padding: .12rem .45rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: .82rem;
+            color: var(--gray-900);
+        }
+        .help-toc {
+            background: var(--primary-light);
+            border-radius: 10px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #d6e3f1;
+        }
+        .help-toc h3 { margin: 0 0 .5rem; color: var(--primary-dark); font-size: 1rem; }
+        .help-toc ol { margin: 0; padding-left: 1.4rem; }
+        .help-toc li { margin-bottom: .25rem; font-size: .9rem; }
+        .help-toc a { color: var(--primary-dark); text-decoration: none; font-weight: 500; }
+        .help-toc a:hover { text-decoration: underline; }
+
+        .help-tip, .help-warn, .help-info {
+            padding: .7rem 1rem;
+            margin: .85rem 0;
+            border-radius: 0 6px 6px 0;
+            font-size: .9rem;
+        }
+        .help-tip {
+            background: var(--primary-light);
+            border-left: 4px solid var(--primary);
+        }
+        .help-tip strong { color: var(--primary-dark); }
+        .help-warn {
+            background: var(--warning-bg);
+            border-left: 4px solid var(--warning);
+            color: #6b4400;
+        }
+        .help-warn strong { color: var(--warning); }
+        .help-info {
+            background: #f0fff4;
+            border-left: 4px solid var(--success-strong);
+        }
+        .help-info strong { color: var(--success); }
+
+        .help-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: .85rem 0 1rem;
+            font-size: .88rem;
+        }
+        .help-table th, .help-table td {
+            border: 1px solid var(--gray-200);
+            padding: .5rem .8rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        .help-table th {
+            background: var(--gray-100);
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+        .help-table td { color: var(--gray-700); }
+
+        /* Mockups visuals senzills */
+        .mockup {
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 1rem 0;
+            font-size: .82rem;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06);
+            background: #fff;
+        }
+        .mockup-header {
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            color: #fff;
+            padding: .6rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: .85rem;
+            font-weight: 600;
+        }
+        .mockup-body { padding: .75rem 1rem; background: var(--gray-50); }
+        .mockup-row {
+            display: grid;
+            grid-template-columns: 24px 130px 1fr 90px 110px 140px;
+            gap: .5rem;
+            padding: .35rem .45rem;
+            background: #fff;
+            border-bottom: 1px solid var(--gray-100);
+            font-size: .8rem;
+            align-items: center;
+        }
+        .mockup-row.is-agrupada {
+            background: #fff3c4;
+            box-shadow: inset 4px 0 0 var(--warning);
+        }
+        .mockup-row.is-acabada {
+            background: #e8f5ed;
+            box-shadow: inset 4px 0 0 var(--success-strong);
+        }
+        .mockup-cell-code { font-family: 'JetBrains Mono', monospace; font-size: .75rem; }
+        .mockup-badge {
+            display: inline-block;
+            padding: .1rem .45rem;
+            border-radius: 10px;
+            font-size: .65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+        .mockup-badge-warn { background: var(--warning); color: #fff; }
+        .mockup-badge-ok { background: var(--success-strong); color: #fff; }
+        .mockup-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: .25rem;
+            background: var(--warning-bg);
+            border: 1px solid var(--warning);
+            border-radius: var(--radius-md);
+            padding: .15rem .5rem;
+            font-size: .75rem;
+            font-weight: 600;
+            color: var(--gray-900);
+        }
+        .mockup-pill-done { background: var(--gray-100); border-color: var(--gray-300); color: var(--gray-700); }
+        .mockup-pill-done::before { content: "✓ "; color: var(--success-strong); font-weight: 800; }
+        .mockup-pill::before { content: "● "; color: var(--warning); }
+
+        /* Card de magatzem (mini) */
+        .mag-mockup {
+            background: #fff;
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            padding: .85rem 1rem;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 1rem;
+            align-items: center;
+            margin: .6rem 0;
+        }
+        .mag-mockup.is-prep { background: #f0fff4; border-color: var(--success-strong); }
+        .mag-mockup-title { font-weight: 700; font-size: 1.05rem; color: var(--gray-900); }
+        .mag-mockup-codi { font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: var(--gray-500); margin-left: .3rem; }
+        .mag-mockup-sacs { font-size: 1.4rem; font-weight: 800; color: var(--primary-dark); }
+        .mag-mockup-check {
+            width: 56px; height: 56px;
+            border: 2px solid var(--gray-300);
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            color: transparent;
+        }
+        .mag-mockup-check.is-on {
+            background: var(--success-strong);
+            border-color: var(--success-strong);
+            color: #fff;
+        }
+
+        .step-grid {
+            display: grid;
+            grid-template-columns: 28px 1fr;
+            column-gap: .85rem;
+            row-gap: .25rem;
+            margin: 1rem 0;
+        }
+        .step-num {
+            grid-column: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 700;
+            font-size: .85rem;
+        }
+        .step-text { grid-column: 2; font-size: .92rem; padding-top: .15rem; }
+
+        .key-list {
+            list-style: none;
+            padding: 0;
+            margin: .75rem 0;
+        }
+        .key-list li {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 1rem;
+            padding: .35rem 0;
+            border-bottom: 1px dashed var(--gray-200);
+            align-items: baseline;
+        }
+        .key-list li:last-child { border-bottom: none; }
+        .key-list .keys { font-family: 'JetBrains Mono', monospace; font-size: .85rem; }
+
+        .help-content a.btn-anchor {
+            display: inline-block;
+            margin-top: 1.5rem;
+            font-size: .85rem;
+            color: var(--primary);
+            text-decoration: none;
+        }
+        .help-content a.btn-anchor:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<header class="app-header">
+    <div class="container header-row">
+        <div>
+            <h1>📦 Ajuda</h1>
+            <p class="subtitle">Manual d'usuari — Agrupació de Càrregues</p>
+        </div>
+        <div class="header-help">
+            <a href="/" class="btn btn-icon" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;width:auto;border-radius:6px;padding:.35rem .8rem;font-size:.85rem;">← Tornar a l'aplicació</a>
+        </div>
+    </div>
+</header>
+
+<main class="help-content">
+
+    <div class="help-toc">
+        <h3>📋 Contingut</h3>
+        <ol>
+            <li><a href="#que-es">Què és aquesta aplicació?</a></li>
+            <li><a href="#oficina">Pantalla principal (oficina)</a></li>
+            <li><a href="#agrupar">Fer una agrupació</a></li>
+            <li><a href="#resultat">Entendre el Resultat de l'agrupació</a></li>
+            <li><a href="#desar">Desar agrupacions i plantilles recurrents</a></li>
+            <li><a href="#desades">Agrupacions desades (★)</a></li>
+            <li><a href="#magatzem">Mode magatzem (preparació amb tablet)</a></li>
+            <li><a href="#impressio">Impressió en paper</a></li>
+            <li><a href="#dreceres">Dreceres de teclat</a></li>
+            <li><a href="#glossari">Glossari</a></li>
+            <li><a href="#contacte">Suport i contacte</a></li>
+        </ol>
+    </div>
+
+    <!-- 1. Què és -->
+    <h2 id="que-es">1. Què és aquesta aplicació?</h2>
+    <p>
+        <strong>Agrupació de Càrregues</strong> és una eina interna d'AGRI-ENERGIA per
+        consolidar diverses càrregues en una <em>agrupació</em>, calcular els palets
+        físics i preparar-los al magatzem amb una llista clara i ordenada.
+    </p>
+    <p>
+        L'objectiu final és <strong>reduir el temps dels operaris</strong> que preparen
+        palets: menys decisions manuals, menys errors, més informació visible.
+    </p>
+    <p>L'aplicació té dos rols:</p>
+    <ul>
+        <li><strong>Oficina</strong> — selecciona les càrregues, genera l'agrupació, la imprimeix o la desa.</li>
+        <li><strong>Magatzem</strong> — obre una agrupació desada al tablet i marca cada producte com a "preparat" a mesura que el carrega.</li>
+    </ul>
+
+    <!-- 2. Pantalla principal -->
+    <h2 id="oficina">2. Pantalla principal (oficina)</h2>
+
+    <h3>2.1 Filtres de cerca</h3>
+    <p>A la part superior pots filtrar quines càrregues vols veure:</p>
+    <ul>
+        <li><strong>Des de</strong> i <strong>Fins a</strong> — rang de dates de sortida.</li>
+        <li><strong>Filtres ràpids</strong>: <em>Avui</em>, <em>Ahir</em>, <em>Aquesta setmana</em>, <em>Última setmana</em>, <em>Aquest mes</em>, <em>Últims 30 dies</em>.</li>
+        <li><strong>Transportistes</strong> — multi-selecció amb cerca. Escriu i prem <kbd>Enter</kbd> per afegir.</li>
+        <li><strong>Filtra (ID, transportista, matrícula…)</strong> — filtra la llista <em>ja carregada</em> per text lliure, sense tornar a consultar la BD.</li>
+    </ul>
+
+    <h3>2.2 La llista "Càrregues trobades"</h3>
+    <p>Cada fila és una càrrega del sistema ERP amb les seves dades essencials:</p>
+
+    <div class="mockup">
+        <div class="mockup-header">
+            <span>Càrregues trobades (3 · 1 ja agrupada)</span>
+            <span style="font-size:.75rem; opacity:.85;">Filtra (ID, transportista…)  ↺ Amplades</span>
+        </div>
+        <div class="mockup-body">
+            <div class="mockup-row" style="background:var(--gray-100); font-weight:600; font-size:.72rem; text-transform:uppercase;">
+                <span>☑</span><span>Càrrega</span><span>Nom</span><span>Data</span><span>Transportista</span><span>Agrupació</span>
+            </div>
+            <div class="mockup-row">
+                <span>☐</span>
+                <span><span class="mockup-cell-code">2026/01/0002240</span></span>
+                <span>MATAS PAL BCN</span>
+                <span>12-06-2026</span>
+                <span>Transportes Escapa</span>
+                <span style="color:var(--gray-400)">—</span>
+            </div>
+            <div class="mockup-row is-agrupada">
+                <span>☐</span>
+                <span>
+                    <span class="mockup-cell-code">2026/01/0002219</span>
+                    <span class="mockup-badge mockup-badge-warn" style="margin-left:.3rem;">Ja agrupada</span>
+                </span>
+                <span>ESCAPA PAL SALZADELL</span>
+                <span>12-06-2026</span>
+                <span>Transportes Escapa</span>
+                <span><span class="mockup-pill">Mascó dilluns</span></span>
+            </div>
+            <div class="mockup-row is-acabada">
+                <span>☐</span>
+                <span>
+                    <span class="mockup-cell-code">2026/01/0002192</span>
+                    <span class="mockup-badge mockup-badge-ok" style="margin-left:.3rem;">Agrupada (acabada)</span>
+                </span>
+                <span>ESCAPA PAL JK ASIAN</span>
+                <span>12-06-2026</span>
+                <span>Transportes Escapa</span>
+                <span><span class="mockup-pill mockup-pill-done">Diumenge migdia</span></span>
+            </div>
+        </div>
+    </div>
+
+    <ul>
+        <li><strong>Càrrega</strong> — codi únic ERP (exercici/sèrie/número). Si la càrrega ja és en una agrupació, sortirà el badge corresponent.</li>
+        <li><strong>Agrupació</strong> (última columna) — nom de l'agrupació on apareix la càrrega. Si no n'hi ha, es mostra <code>—</code>.</li>
+    </ul>
+
+    <div class="help-info">
+        <strong>Pic verd ✓ vs Pic groc ●:</strong> el verd indica que l'agrupació ja s'ha completat al magatzem (tots els productes preparats); el groc, que encara està activa. <strong>En ambdós casos la càrrega està bloquejada</strong> per no poder duplicar-la.
+    </div>
+
+    <h3>2.3 Seleccionar càrregues</h3>
+    <ul>
+        <li>Clic al checkbox o a la fila — selecciona / desselecciona.</li>
+        <li><kbd>Shift</kbd> + clic — selecciona un <strong>rang</strong> contigu.</li>
+        <li>Checkbox de capçalera — marca / desmarca <strong>totes</strong> les visibles.</li>
+        <li><kbd>Ctrl</kbd> + <kbd>A</kbd> — drecera per marcar totes.</li>
+        <li>Les càrregues <strong>ja agrupades</strong> (badge groc o verd) <strong>no</strong> es poden seleccionar.</li>
+    </ul>
+
+    <h3>2.4 Veure detall d'una càrrega (▶)</h3>
+    <p>
+        Clica el triangle ▶ a l'esquerra d'una fila per veure tots els albarans i les seves
+        línies, incloent els articles, sacs i kg. Útil per inspeccionar el contingut abans
+        d'agrupar.
+    </p>
+
+    <h3>2.5 Reordenar i redimensionar columnes</h3>
+    <ul>
+        <li>Clic a una capçalera amb fletxes — ordena per aquella columna (clic de nou per invertir).</li>
+        <li>Arrossega la dreta d'una capçalera — redimensiona la columna. Les amplades es guarden al navegador.</li>
+        <li>Botó <strong>↺ Amplades</strong> sobre la taula — torna a les amplades per defecte.</li>
+    </ul>
+
+    <!-- 3. Agrupar -->
+    <h2 id="agrupar">3. Fer una agrupació</h2>
+
+    <div class="step-grid">
+        <div class="step-num">1</div>
+        <div class="step-text">Cerca les càrregues amb els filtres adequats (data, transportista…).</div>
+        <div class="step-num">2</div>
+        <div class="step-text">Selecciona les que vulguis agrupar (màxim <strong>50</strong> per agrupació).</div>
+        <div class="step-num">3</div>
+        <div class="step-text">A la barra del fons, prem <strong>Agrupar selecció</strong>.</div>
+        <div class="step-num">4</div>
+        <div class="step-text">S'obre el modal <strong>Resultat de l'agrupació</strong> amb el càlcul de palets.</div>
+    </div>
+
+    <div class="help-tip">
+        <strong>💡 Plantilles recurrents:</strong> si una agrupació es repeteix sovint amb els mateixos transportistes, marca-la com a plantilla al desar. L'app et suggerirà aplicar-la automàticament a futures cerques (mira la secció 5).
+    </div>
+
+    <div class="help-warn">
+        <strong>⚠ Una càrrega només pot estar en una agrupació.</strong> Si proves d'agrupar una càrrega ja agrupada (activa o finalitzada), l'app et mostrarà un avís. Per tornar-la a agrupar, primer cal eliminar l'agrupació antiga.
+    </div>
+
+    <h3>Què passa si l'agrupació triga?</h3>
+    <p>
+        Si supera els <strong>3 segons</strong>, el botó canvia el text a "Agrupant N càrregues, pot trigar uns segons…". A partir de <strong>20 segons</strong> apareix un avís suggerint cancel·lar amb <kbd>Esc</kbd>.
+    </p>
+
+    <!-- 4. Resultat -->
+    <h2 id="resultat">4. Entendre el Resultat de l'agrupació</h2>
+    <p>Aquest modal mostra el càlcul complet en blocs:</p>
+    <ul>
+        <li><strong>KPIs</strong> — n. càrregues, productes, sacs, kg, palets físics.</li>
+        <li><strong>Palets físics per tipus</strong> — quants palets de cada model físic (e.g. <code>PALET PLASTIC EUROPEU 120X80</code>) calen, amb el desglossament per càrrega (pic colorit).</li>
+        <li><strong>Càrregues incloses</strong> — pastilles d'identificació coloritzades.</li>
+        <li><strong>Productes</strong> — taula ordenable per article, descripció, sacs, kg. Pots expandir cada producte per veure detalls per càrrega i el desglossament dels palets (amb albarà d'origen).</li>
+        <li><strong>Incidències</strong> — si alguna càrrega no s'ha pogut processar, surt aquí (badge taronja); si tot ha anat bé, badge verd "Sense incidències".</li>
+    </ul>
+
+    <h3>Botons del modal</h3>
+    <ul>
+        <li><strong>📋 Checklist preparació</strong> — visible només quan l'agrupació ja és desada. Obre la pantalla de magatzem amb el check per cada producte.</li>
+        <li><strong>🖨 Imprimir</strong> — genera un full A4 amb el layout del magatzem (per portar a la pista).</li>
+        <li><strong>⭐ Desa</strong> — guarda l'agrupació amb un nom. Pots marcar-la com a plantilla recurrent.</li>
+        <li><strong>Exportar CSV</strong> — fitxer descarregable per importar a Excel o un altre sistema.</li>
+        <li><strong>×</strong> — tanca el modal. Si l'agrupació venia d'una desada, recuperes la cerca que tenies abans.</li>
+    </ul>
+
+    <!-- 5. Desar -->
+    <h2 id="desar">5. Desar agrupacions i plantilles recurrents</h2>
+
+    <h3>Desar una agrupació</h3>
+    <p>Al modal, clica <strong>⭐ Desa</strong>:</p>
+    <ol>
+        <li>Posa un nom curt i identificatiu (e.g. <code>Mascó dilluns matí</code>).</li>
+        <li>Si l'agrupació es repetirà sovint, marca <strong>⭐ Plantilla recurrent</strong>.</li>
+        <li>Prem <strong>Desa</strong>. Es desa al servidor (no només al teu navegador).</li>
+    </ol>
+
+    <h3>Què són les plantilles recurrents?</h3>
+    <p>
+        Una plantilla recorda <strong>els transportistes</strong> de les càrregues que la conformen.
+        Quan torna a fer una cerca, si l'app troba <strong>2 o més càrregues</strong> amb el mateix
+        transportista que la plantilla, mostra un <strong>banner groc</strong> sobre la taula:
+    </p>
+
+    <div class="mockup">
+        <div class="mockup-body" style="background:#fff;">
+            <div style="display:flex; align-items:center; gap:.9rem; padding:.65rem 1rem; background:linear-gradient(135deg, #fffbe6 0%, #fff8d0 100%); border:1px solid #f0c14b; border-left:5px solid #e0a800; border-radius:6px;">
+                <span style="font-size:1.3rem;">💡</span>
+                <div style="flex:1;">
+                    Hi ha <strong>4</strong> càrregues que encaixen amb la plantilla
+                    <strong>Mascó dilluns matí</strong>.
+                    <div style="font-size:.78rem; color:var(--gray-700); margin-top:.15rem;">Transportes Escapa, Agri Energia SA</div>
+                </div>
+                <button style="background:var(--primary); color:#fff; border:none; padding:.4rem 1rem; border-radius:6px; font-size:.85rem; font-weight:600;">Aplicar</button>
+                <button style="background:none; border:none; font-size:1.1rem; color:var(--gray-500);">×</button>
+            </div>
+        </div>
+    </div>
+
+    <ul>
+        <li><strong>Aplicar</strong> → pre-selecciona les càrregues compatibles a la llista.</li>
+        <li><strong>×</strong> → amaga el suggeriment per a aquesta cerca.</li>
+        <li>Les càrregues ja agrupades es respecten i no se seleccionen.</li>
+    </ul>
+
+    <!-- 6. Desades -->
+    <h2 id="desades">6. Agrupacions desades (★)</h2>
+    <p>
+        El botó <strong>★</strong> al header obre el diàleg amb totes les agrupacions desades,
+        ordenades per data (més recents primer). Cadascuna mostra:
+    </p>
+    <ul>
+        <li>Nom + data + nombre de càrregues + productes + palets físics</li>
+        <li><strong>Carrega</strong> — obre el Resultat al modal (mateix layout que quan ho vas crear).</li>
+        <li><strong>Elimina</strong> — esborra definitivament. Les càrregues d'aquesta agrupació tornen a estar disponibles per agrupar.</li>
+    </ul>
+
+    <div class="help-tip">
+        <strong>💡 Drecera:</strong> a la pàgina principal pots clicar el badge "Ja agrupada" o la cel·la d'agrupació de qualsevol fila per saltar directament al Resultat d'aquella agrupació.
+    </div>
+
+    <!-- 7. Magatzem -->
+    <h2 id="magatzem">7. Mode magatzem (preparació amb tablet)</h2>
+
+    <h3>7.1 Llistat d'agrupacions</h3>
+    <p>
+        Des de <code>/magatzem</code> es veuen les agrupacions disponibles per preparar. Per defecte les
+        <strong>acabades</strong> queden ocultes; pots mostrar-les amb el toggle <em>"Mostra també les acabades"</em>.
+    </p>
+
+    <h3>7.2 Pantalla de preparació</h3>
+    <p>
+        En obrir una agrupació, cada producte té una card gran amb un <strong>check 64×64</strong> a la dreta
+        que l'operari toca per marcar-lo com a preparat. La card es torna verda i passa al final de la llista.
+    </p>
+
+    <div class="mag-mockup">
+        <div>
+            <span class="mag-mockup-title">PINSO POLLETS</span>
+            <span class="mag-mockup-codi">123450</span>
+            <div style="font-size:.78rem; color:var(--gray-700); margin-top:.35rem;">
+                ● Mascó 14 #1234 · 80 sacs · 2000 kg
+            </div>
+        </div>
+        <div style="text-align:right;">
+            <div class="mag-mockup-sacs">80 <span style="font-size:.75rem; font-weight:600; color:var(--gray-700);">sacs</span></div>
+            <div class="mag-mockup-check" style="margin-top:.5rem;">　</div>
+        </div>
+    </div>
+
+    <div class="mag-mockup is-prep">
+        <div>
+            <span class="mag-mockup-title" style="text-decoration:line-through;">FARINA T55</span>
+            <span class="mag-mockup-codi">120100</span>
+            <div style="font-size:.78rem; color:var(--gray-700); margin-top:.35rem;">
+                ● Escapa #2240 · 40 sacs · 1000 kg
+            </div>
+        </div>
+        <div style="text-align:right;">
+            <div class="mag-mockup-sacs" style="color:var(--success);">40 <span style="font-size:.75rem; font-weight:600; color:var(--gray-700);">sacs</span></div>
+            <div class="mag-mockup-check is-on" style="margin-top:.5rem;">✓</div>
+        </div>
+    </div>
+
+    <h3>7.3 Feedback tàctil</h3>
+    <ul>
+        <li>En marcar o desmarcar un producte, la tablet <strong>vibra</strong> breument (60 ms al marcar, patró al desmarcar) per confirmar el toc.</li>
+        <li>Si vas amb guants, el botó és prou gran perquè es pugui premar amb un dit gruixut.</li>
+    </ul>
+
+    <h3>7.4 Sincronització automàtica</h3>
+    <p>
+        Cada 5 segons l'app comprova si una altra tablet ha actualitzat l'agrupació. Si tu acabes de tocar
+        un check, la sincronia es <strong>difereix 1,5 s</strong> per no interrompre la teva interacció.
+    </p>
+
+    <h3>7.5 Botons de la toolbar</h3>
+    <ul>
+        <li><strong>Amaga els preparats</strong> — deixa només els pendents per veure ràpid què queda.</li>
+        <li><strong>↶ Desfés preparats</strong> — visible només si hi ha algun productes marcat. Desmarca <em>tots</em> els productes (amb confirmació).</li>
+        <li><strong>🖨 Imprimir</strong> — imprimeix la llista amb quadrats per marcar a mà al paper.</li>
+        <li><strong>↻ Refresca</strong> — sincronia immediata.</li>
+    </ul>
+
+    <!-- 8. Impressió -->
+    <h2 id="impressio">8. Impressió en paper</h2>
+    <p>L'app comparteix el layout d'impressió entre l'oficina i el magatzem:</p>
+    <ul>
+        <li><strong>A4 amb marges petits</strong>, font densa per maximitzar el contingut per pàgina.</li>
+        <li><strong>Cada producte</strong> en una línia: descripció, codi, càrregues amb pic colorit, sacs i kg. Al final, <strong>quadrat</strong> per marcar manualment a la pista.</li>
+        <li><strong>Capçalera</strong> amb nom de l'agrupació, càrregues, sacs i palets totals, i data d'impressió.</li>
+        <li><strong>Footer</strong>: "Total palets" per tipus complet (e.g. <code>12 PALET PLASTIC EUROPEU 120X80</code>) i pes per càrrega amb el pic colorit.</li>
+    </ul>
+
+    <!-- 9. Dreceres -->
+    <h2 id="dreceres">9. Dreceres de teclat</h2>
+    <ul class="key-list">
+        <li><span class="keys"><kbd>Enter</kbd> al formulari</span><span>Cerca càrregues</span></li>
+        <li><span class="keys"><kbd>Ctrl</kbd>+<kbd>A</kbd></span><span>Marca totes les càrregues visibles</span></li>
+        <li><span class="keys"><kbd>Shift</kbd>+clic</span><span>Selecciona un rang</span></li>
+        <li><span class="keys">Clic a la fila</span><span>Commuta la selecció d'aquella càrrega</span></li>
+        <li><span class="keys"><kbd>Esc</kbd></span><span>Tanca avisos · cancel·la cerca o agrupació en curs</span></li>
+        <li><span class="keys">Arrossega la dreta d'un thead</span><span>Redimensiona la columna</span></li>
+        <li><span class="keys">Botó <kbd>↺ Amplades</kbd></span><span>Restablir mides per defecte</span></li>
+    </ul>
+
+    <!-- 10. Glossari -->
+    <h2 id="glossari">10. Glossari</h2>
+    <table class="help-table">
+        <thead>
+            <tr><th>Terme</th><th>Definició</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Càrrega</strong></td>
+                <td>Una unitat de transport identificada per <code>EXERCICI/SÈRIE/NÚMERO</code>. Conté un o més albarans/comandes.</td>
+            </tr>
+            <tr>
+                <td><strong>Albarà / Comanda</strong></td>
+                <td>Document que pertany a una càrrega. Tipus <code>A</code> = albarà, <code>P</code> = comanda pendent.</td>
+            </tr>
+            <tr>
+                <td><strong>Agrupació</strong></td>
+                <td>Conjunt de càrregues seleccionades juntes per al càlcul d'embalatges i la preparació.</td>
+            </tr>
+            <tr>
+                <td><strong>Plantilla recurrent</strong></td>
+                <td>Agrupació desada que es repeteix sovint amb els mateixos transportistes. L'app la suggereix.</td>
+            </tr>
+            <tr>
+                <td><strong>Palet físic</strong></td>
+                <td>Unitat física calculada pel motor d'embalatges. Cada palet té un tipus (e.g. <code>PALET PLASTIC EUROPEU 120X80</code>) i conté un o més articles.</td>
+            </tr>
+            <tr>
+                <td><strong>Productes preparats</strong></td>
+                <td>Articles que l'operari ha marcat com a "ja carregats al palet" al magatzem. Persistents al servidor.</td>
+            </tr>
+            <tr>
+                <td><strong>Agrupació finalitzada (acabada)</strong></td>
+                <td>Aquella en què tots els productes han sigut marcats com a preparats.</td>
+            </tr>
+            <tr>
+                <td><strong>Transportista</strong></td>
+                <td>Empresa responsable del transport d'una càrrega. Cada càrrega n'assigna un (<code>tra_codi</code>).</td>
+            </tr>
+            <tr>
+                <td><strong>Tunitat (S25, S40, GRA, UNI)</strong></td>
+                <td>Format de venda dels articles. <code>S25</code>=sac de 25 kg, <code>S40</code>=sac de 40 kg, etc. Els articles <code>GRA</code> (granell) i <code>UNI</code> (unitat) no es palettzen.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- 11. Contacte -->
+    <h2 id="contacte">11. Suport i contacte</h2>
+    <p>
+        Si trobes errors, vols suggerir millores, o tens dubtes que no resol aquesta pàgina,
+        avisa al departament d'informàtica d'AGRI-ENERGIA. La versió més recent del codi i
+        l'historial de canvis es manté a GitHub.
+    </p>
+
+    <a href="#" class="btn-anchor">↑ Tornar a dalt</a>
+</main>
+
+</body>
+</html>

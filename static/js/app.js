@@ -672,6 +672,12 @@ function renderLlistaCarregues() {
     }
     $("#msg-llista-buida").hidden = true;
 
+    // Neteja files no-data (skeleton, missatges de filtre buit, etc.) abans del diff
+    for (const tr of Array.from(tbody.children)) {
+        if (!tr.dataset.carregaId && !tr.classList.contains("row-detall-carrega")) {
+            tr.remove();
+        }
+    }
     // Diff render: reutilitza files existents per carrega_id, mou-les a la posició correcta
     const existents = new Map();
     for (const tr of tbody.querySelectorAll('tr[data-carrega-id]')) {

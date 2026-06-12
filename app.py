@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from logging.handlers import RotatingFileHandler
 
 import pyodbc
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, url_for
 
 # --- Bootstrap .env i sys.path ABANS d'importar agregador ----------------
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -66,6 +66,19 @@ logging.basicConfig(level=logging.INFO, handlers=[_log_handler, _stream_handler]
 log = logging.getLogger("agrupacio")
 
 app = Flask(__name__)
+
+
+# --- Cache-busting d'assets ----------------------------------------------
+@app.context_processor
+def _inject_static_helper():
+    def static_url(filename: str) -> str:
+        path = os.path.join(_HERE, "static", *filename.split("/"))
+        try:
+            v = int(os.path.getmtime(path))
+        except OSError:
+            v = 0
+        return url_for("static", filename=filename, v=v)
+    return {"static_url": static_url}
 
 
 # --- Headers de seguretat ------------------------------------------------

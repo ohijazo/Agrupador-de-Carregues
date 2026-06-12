@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agrupació de càrregues</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/magatzem.css') }}" media="print">
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/magatzem.css') }}" media="print">
 </head>
 <body>
 
@@ -250,8 +250,8 @@
 
 </main>
 
-<script src="{{ url_for('static', filename='js/fmt.js') }}"></script>
-<script src="{{ url_for('static', filename='js/palets.js') }}"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ static_url('js/fmt.js') }}"></script>
+<script src="{{ static_url('js/palets.js') }}"></script>
+<script src="{{ static_url('js/app.js') }}"></script>
 </body>
 </html>

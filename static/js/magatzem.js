@@ -344,12 +344,11 @@ window.magatzemPrep = async function magatzemPrep(id) {
             // Footer: resum palets per tipus + pes total per càrrega
             const foot = $m("#mag-print-footer");
             if (foot && r) {
-                // 1) Palets per tipus (ja agregats al backend, abreviem el descrip)
+                // 1) Palets per tipus — al footer mostrem el descrip complet
+                // (sense abreviar) perquè el reglament és més llegible en paper
                 const tipusHtml = (r.tipus_palets || []).map(t => {
-                    const ab = (typeof abreviarTipusPalet === "function")
-                        ? abreviarTipusPalet(t.tipus_palet_descrip) || t.tipus_palet_descrip
-                        : t.tipus_palet_descrip;
-                    return `<span>${fmtN.format(t.quantitat)} ${escapeM(ab)}</span>`;
+                    const nom = t.tipus_palet_descrip || t.tipus_palet || "";
+                    return `<span>${fmtN.format(t.quantitat)} ${escapeM(nom)}</span>`;
                 }).join(" · ");
 
                 // 2) Pes per càrrega: agregació sobre productes[].per_carrega[]

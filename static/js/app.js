@@ -1167,12 +1167,11 @@ function generaImpressioOficina(r) {
             </li>`;
     }).join("");
 
-    // Footer: totals palets per tipus + pes per càrrega
+    // Footer: totals palets per tipus + pes per càrrega.
+    // Mostrem el descrip complet (sense abreviar) — és millor per al paper.
     const tipusHtml = (r.tipus_palets || []).map(t => {
-        const ab = (typeof abreviarTipusPalet === "function")
-            ? abreviarTipusPalet(t.tipus_palet_descrip) || t.tipus_palet_descrip
-            : t.tipus_palet_descrip;
-        return `<span>${fmtN.format(t.quantitat)} ${escapeHtml(ab)}</span>`;
+        const nom = t.tipus_palet_descrip || t.tipus_palet || "";
+        return `<span>${fmtN.format(t.quantitat)} ${escapeHtml(nom)}</span>`;
     }).join(" · ");
     const pesPerCar = new Map();
     for (const p of (r.productes || [])) {

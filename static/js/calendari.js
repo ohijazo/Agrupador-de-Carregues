@@ -16,6 +16,13 @@
     const fmtDiaLlarg = new Intl.DateTimeFormat("ca-ES", { weekday: "long", day: "numeric", month: "long" });
 
     function capitalitzar(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+    function debounce(fn, delay) {
+        let t = null;
+        return function (...args) {
+            clearTimeout(t);
+            t = setTimeout(() => fn.apply(this, args), delay);
+        };
+    }
     function escapeHtml(s) {
         return String(s == null ? "" : s).replace(/[&<>"']/g, ch => ({
             "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -58,15 +65,20 @@
     // ---------------------------------------------------------------
     // Estat
     // ---------------------------------------------------------------
+    const DIES_CURT = ["Dl", "Dt", "Dc", "Dj", "Dv"];
+
     const state = {
         any_: 0,
         mes: 0,
         diaInici: null,        // primer dilluns visible
         diaFi: null,           // últim diumenge visible
-        carreguesPerDia: new Map(),   // isoDate -> Carrega[]   (només Dl-Dv)
-        capSetmana: [],        // càrregues DS/DG dins el mes actual
+        carreguesPerDiaTotes: new Map(),  // isoDate -> Carrega[]   (totes, sense filtre)
+        carreguesPerDia: new Map(),       // isoDate -> Carrega[]   (filtrades per `cercaText`)
+        capSetmanaTotes: [],   // (totes les DS/DG, sense filtre)
+        capSetmana: [],        // càrregues DS/DG dins el mes actual (filtrades)
         totalsCount: 0,
         totalsKg: 0,
+        cercaText: "",
         abortCtrl: null,
         modalAbort: null,
         scrollPendent: true,   // primer render: scrolla a la setmana actual
@@ -114,7 +126,6 @@
     function agruparPerDia(items) {
         const perDia = new Map();
         const capSetmana = [];
-        let nMes = 0, kgMes = 0;
         for (const c of items) {
             if (!c.car_fecsalida) continue;
             const key = String(c.car_fecsalida).slice(0, 10);
@@ -128,15 +139,51 @@
                 if (!perDia.has(key)) perDia.set(key, []);
                 perDia.get(key).push(c);
             }
-            if (enMesActual) {
-                nMes++;
-                kgMes += kgDeCarrega(c);
-            }
         }
         for (const arr of perDia.values()) {
             arr.sort((a, b) => (a.car_descripcion || "").localeCompare(b.car_descripcion || "", "ca"));
         }
         capSetmana.sort((a, b) => a.data.localeCompare(b.data));
+        state.carreguesPerDiaTotes = perDia;
+        state.capSetmanaTotes = capSetmana;
+        aplicarFiltreText();
+    }
+
+    function carregaCoincideix(c, q) {
+        if (!q) return true;
+        const ql = q.toLowerCase();
+        const camps = [
+            c.carrega_id, c.car_descripcion, c.transportista, c.tra_codi,
+            c.car_matricula, c.car_nomconductor, c.car_observaciones,
+        ];
+        return camps.some(v => (v || "").toString().toLowerCase().includes(ql));
+    }
+
+    function aplicarFiltreText() {
+        const q = state.cercaText.trim();
+        // Filtra Dl-Dv
+        const perDia = new Map();
+        let nMes = 0, kgMes = 0;
+        for (const [key, arr] of state.carreguesPerDiaTotes) {
+            const filtrats = q ? arr.filter(c => carregaCoincideix(c, q)) : arr.slice();
+            if (filtrats.length > 0) perDia.set(key, filtrats);
+            // Stats: només dies del mes actual
+            const [yy, mm] = key.split("-").map(Number);
+            if (yy === state.any_ && mm === state.mes) {
+                for (const c of filtrats) {
+                    nMes++;
+                    kgMes += kgDeCarrega(c);
+                }
+            }
+        }
+        // Filtra DS/DG
+        const capSetmana = q
+            ? state.capSetmanaTotes.filter(x => carregaCoincideix(x.c, q))
+            : state.capSetmanaTotes.slice();
+        for (const x of capSetmana) {
+            nMes++;
+            kgMes += kgDeCarrega(x.c);
+        }
         state.carreguesPerDia = perDia;
         state.capSetmana = capSetmana;
         state.totalsCount = nMes;
@@ -152,10 +199,19 @@
     }
 
     function renderStats() {
-        const txt = state.totalsCount === 0
-            ? "Cap càrrega aquest mes"
-            : `${state.totalsCount} càrregues · ${fmtKg0.format(state.totalsKg)} kg`;
-        $("#cal-stats-text").textContent = txt;
+        const stats = $("#cal-stats");
+        if (state.totalsCount === 0) {
+            stats.innerHTML = `<span class="cal-stat-chip cal-stat-empty">Cap càrrega aquest mes</span>`;
+        } else {
+            stats.innerHTML =
+                `<span class="cal-stat-chip" title="Càrregues amb data de sortida aquest mes"><span class="cal-stat-ico" aria-hidden="true">📦</span>${state.totalsCount}<span class="cal-stat-lbl"> càrregues</span></span>` +
+                `<span class="cal-stat-chip" title="Suma total de kg aquest mes"><span class="cal-stat-ico" aria-hidden="true">⚖</span>${fmtKg0.format(state.totalsKg)}<span class="cal-stat-lbl"> kg</span></span>`;
+        }
+
+        // Botó "Avui" destacat quan no estem al mes actual
+        const t = new Date();
+        const auMesActual = (state.any_ === t.getFullYear() && state.mes === (t.getMonth() + 1));
+        $("#cal-avui").classList.toggle("is-prominent", !auMesActual);
     }
 
     function renderGrid() {
@@ -187,6 +243,11 @@
 
                 const head = document.createElement("div");
                 head.className = "cal-cell-head";
+                // Dia de la setmana (sempre visible a la cel·la — sobreviu al scroll)
+                const dayLbl = document.createElement("span");
+                dayLbl.className = "cal-cell-day";
+                dayLbl.textContent = DIES_CURT[ws];
+                head.appendChild(dayLbl);
                 const num = document.createElement("span");
                 num.className = "cal-cell-num";
                 num.textContent = String(d.getDate());
@@ -195,7 +256,7 @@
                 if (llista.length > 0) {
                     const badge = document.createElement("span");
                     badge.className = "cal-cell-badge";
-                    badge.textContent = String(llista.length);
+                    badge.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">📦</span>${llista.length}`;
                     badge.title = `${llista.length} càrregues`;
                     head.appendChild(badge);
 
@@ -203,7 +264,7 @@
                     if (sumKg > 0) {
                         const kgSpan = document.createElement("span");
                         kgSpan.className = "cal-cell-kg";
-                        kgSpan.textContent = `${fmtKg0.format(sumKg)} kg`;
+                        kgSpan.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">⚖</span>${escapeHtml(fmtKg0.format(sumKg))} kg`;
                         kgSpan.title = `Total: ${fmtKg2.format(sumKg)} kg`;
                         head.appendChild(kgSpan);
                     }
@@ -238,15 +299,11 @@
         li.dataset.id = c.carrega_id || "";
         li.dataset.data = isoData;
         if (c.palletitzable === false) li.classList.add("is-no-palletitzable");
+        // Guardem dades per al tooltip propi
+        li._cal = c;
 
         const nom = (c.car_descripcion || "").trim() || c.carrega_id || "—";
         const kg = kgDeCarrega(c);
-        const transp = (c.transportista || c.tra_codi || "").trim();
-        const bits = [nom];
-        if (transp) bits.push(transp);
-        if (kg > 0) bits.push(`${fmtKg2.format(kg)} kg`);
-        bits.push(`Càrrega ${c.carrega_id}`);
-        li.title = bits.join(" · ");
 
         const sNom = document.createElement("span");
         sNom.className = "cal-evt-nom";
@@ -260,6 +317,59 @@
             li.appendChild(sKg);
         }
         return li;
+    }
+
+    // ---------------------------------------------------------------
+    // Tooltip propi (substitueix l'atribut `title` natiu, més lent i lleig)
+    // ---------------------------------------------------------------
+    function tooltipHTML(c) {
+        const nom = (c.car_descripcion || "").trim() || c.carrega_id || "—";
+        const kg = kgDeCarrega(c);
+        const transp = (c.transportista || c.tra_codi || "").trim();
+        const matricula = (c.car_matricula || "").trim();
+        const data = c.car_fecsalida || c.car_fecha || "";
+        const [yy, mm, dd] = (data || "").split("-").map(Number);
+        const dataTxt = (yy && mm && dd) ? capitalitzar(fmtDiaLlarg.format(new Date(yy, mm - 1, dd))) : "";
+        const rows = [
+            `<div class="cal-tt-titol">${escapeHtml(nom)}</div>`,
+            `<div class="cal-tt-id muted"><code>${escapeHtml(c.carrega_id)}</code></div>`,
+            dataTxt ? `<div class="cal-tt-row"><span class="muted">Sortida:</span> ${escapeHtml(dataTxt)}</div>` : "",
+            transp ? `<div class="cal-tt-row"><span class="muted">Transportista:</span> ${escapeHtml(transp)}</div>` : "",
+            matricula ? `<div class="cal-tt-row"><span class="muted">Matrícula:</span> ${escapeHtml(matricula)}</div>` : "",
+            kg > 0 ? `<div class="cal-tt-row"><span class="muted">Pes:</span> <strong>${escapeHtml(fmtKg2.format(kg))} kg</strong></div>` : "",
+            `<div class="cal-tt-hint muted">Clica per veure el detall complet</div>`,
+        ].filter(Boolean).join("");
+        return rows;
+    }
+
+    let tooltipEl = null;
+    function getTooltipEl() {
+        if (tooltipEl) return tooltipEl;
+        tooltipEl = document.createElement("div");
+        tooltipEl.className = "cal-tooltip";
+        tooltipEl.setAttribute("role", "tooltip");
+        document.body.appendChild(tooltipEl);
+        return tooltipEl;
+    }
+    function mostraTooltip(target, c) {
+        const tt = getTooltipEl();
+        tt.innerHTML = tooltipHTML(c);
+        tt.classList.add("is-visible");
+        const r = target.getBoundingClientRect();
+        // Posiciona a la dreta de l'esdeveniment, o a sota si no hi cap.
+        const margin = 8;
+        const ttRect = tt.getBoundingClientRect();
+        let left = r.right + margin;
+        let top  = r.top + (r.height / 2) - (ttRect.height / 2);
+        if (left + ttRect.width > window.innerWidth - 8) left = r.left - ttRect.width - margin;
+        if (left < 8) { left = r.left; top = r.bottom + margin; }
+        if (top < 8) top = 8;
+        if (top + ttRect.height > window.innerHeight - 8) top = window.innerHeight - ttRect.height - 8;
+        tt.style.left = `${left}px`;
+        tt.style.top  = `${top}px`;
+    }
+    function amagaTooltip() {
+        if (tooltipEl) tooltipEl.classList.remove("is-visible");
     }
 
     function renderCapSetmana() {
@@ -457,6 +567,53 @@
         grid.addEventListener("click", onClickEvt);
         $("#cal-capsetmana-llista").addEventListener("click", onClickEvt);
 
+        // Tooltip propi (substitueix l'atribut title natiu). Mouseover/mouseout
+        // bubbleejen i els filtrem per `closest(".cal-evt, .cal-cs-item")`.
+        let lastHover = null;
+        const onMouseOver = (e) => {
+            const evt = e.target.closest(".cal-evt, .cal-cs-item");
+            if (!evt || evt === lastHover) return;
+            lastHover = evt;
+            const c = evt._cal || (evt.dataset.id && trobaCarreguaLocal(evt.dataset.id));
+            if (c) mostraTooltip(evt, c);
+        };
+        const onMouseOut = (e) => {
+            const evt = e.target.closest(".cal-evt, .cal-cs-item");
+            if (!evt) return;
+            if (e.relatedTarget && evt.contains(e.relatedTarget)) return;
+            lastHover = null;
+            amagaTooltip();
+        };
+        grid.addEventListener("mouseover", onMouseOver);
+        grid.addEventListener("mouseout",  onMouseOut);
+        $("#cal-capsetmana-llista").addEventListener("mouseover", onMouseOver);
+        $("#cal-capsetmana-llista").addEventListener("mouseout",  onMouseOut);
+        window.addEventListener("scroll", amagaTooltip, true);
+        window.addEventListener("resize", amagaTooltip);
+
+        // Cerca per text
+        const cercaInput = $("#cal-cerca");
+        if (cercaInput) {
+            const aplicarCerca = debounce(() => {
+                state.cercaText = cercaInput.value;
+                aplicarFiltreText();
+                renderGrid();
+                renderCapSetmana();
+                renderStats();
+            }, 150);
+            cercaInput.addEventListener("input", aplicarCerca);
+            // Esc dins la caixa neteja
+            cercaInput.addEventListener("keydown", (e) => {
+                if (e.key === "Escape" && cercaInput.value) {
+                    cercaInput.value = "";
+                    state.cercaText = "";
+                    aplicarFiltreText(); renderGrid(); renderCapSetmana(); renderStats();
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            });
+        }
+
         const onKeyEvt = (e) => {
             if (e.key !== "Enter" && e.key !== " ") return;
             const evt = e.target.closest(".cal-evt, .cal-cs-item");
@@ -476,6 +633,20 @@
         });
         dlg.addEventListener("close", () => {
             if (state.modalAbort) { state.modalAbort.abort(); state.modalAbort = null; }
+        });
+
+        // Auto-refresh cada 10 minuts. No refresca si la pestanya és al fons
+        // ni si hi ha el modal de detall obert (per no interrompre la lectura).
+        const REFRESH_MS = 10 * 60 * 1000;
+        setInterval(() => {
+            if (document.hidden) return;
+            if (dlg.hasAttribute("open")) return;
+            carregaMes();
+        }, REFRESH_MS);
+        // En tornar a la pestanya després d'estar a un altre tab, refresca un
+        // cop perquè els kg/càrregues del dia reflecteixin canvis recents.
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden && !dlg.hasAttribute("open")) carregaMes();
         });
     }
 

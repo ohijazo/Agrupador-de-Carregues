@@ -57,6 +57,11 @@ const state = {
     abortAgrupar: null,
     plantilles: [],            // llista de plantilles desades (GET /api/plantilles)
     plantillesTancades: new Set(),  // ids tancades per l'usuari en aquesta cerca
+    // Quan obrim el modal des d'una agrupació desada, guardem l'estat
+    // de la cerca actual per restaurar-lo al tancar (l'usuari espera
+    // tornar a la pàgina principal tal com l'havia deixat).
+    backupAbansAgrupacio: null,
+    modalDesAgrupacioDesada: false,
 };
 
 const PLANTILLA_MIN_COMPATIBLES = 2;  // llindar per mostrar el banner
@@ -972,6 +977,8 @@ async function agrupar() {
         const resultat = await resp.json();
         state.resultat = resultat;
         state.agrupacioActualId = null;   // resultat nou, encara no desat
+        state.modalDesAgrupacioDesada = false;
+        state.backupAbansAgrupacio = null;
         renderResultat(resultat);
         actualitzarBotoMagatzem();
         obrirModalResultat();
@@ -1228,7 +1235,25 @@ function tancarModalResultat() {
     const dlg = $("#resultat-dialog");
     if (!dlg) return;
     if (typeof dlg.close === "function" && dlg.open) dlg.close();
-    else dlg.removeAttribute("open");
+    else { dlg.removeAttribute("open"); restaurarBackupSiCal(); }
+}
+
+function restaurarBackupSiCal() {
+    if (!state.modalDesAgrupacioDesada || !state.backupAbansAgrupacio) return;
+    const b = state.backupAbansAgrupacio;
+    state.carregues = b.carregues;
+    state.seleccio = b.seleccio;
+    state.paginacio.total = b.paginacioTotal;
+    state.paginacio.offset = b.paginacioOffset;
+    state.filtreText = b.filtreText;
+    state.backupAbansAgrupacio = null;
+    state.modalDesAgrupacioDesada = false;
+    state.agrupacioActualId = null;
+    state.resultat = null;
+    actualitzarBotoMagatzem();
+    const filtreInput = $("#filtre-taula");
+    if (filtreInput) filtreInput.value = state.filtreText || "";
+    renderLlistaCarregues();
 }
 
 // ============================================================
@@ -1781,7 +1806,17 @@ async function obrirDesades() {
 async function carregarAgrupacioDesada(id) {
     try {
         const obj = await fetchJson(`/api/agrupacions/${encodeURIComponent(id)}`);
-        // Restaurem la selecció i el resultat sense tornar a calcular
+        // Guardem l'estat de la cerca actual perquè en tancar el modal
+        // l'usuari torni a veure-la tal com l'havia deixat (no afectada
+        // per haver mirat una agrupació desada).
+        state.backupAbansAgrupacio = {
+            carregues: state.carregues,
+            seleccio: new Set(state.seleccio),
+            paginacioTotal: state.paginacio.total,
+            paginacioOffset: state.paginacio.offset,
+            filtreText: state.filtreText,
+        };
+        state.modalDesAgrupacioDesada = true;
         state.carregues = obj.carregues || [];
         state.seleccio = new Set(state.carregues.map(c => c.carrega_id));
         state.resultat = obj.resultat;
@@ -2126,6 +2161,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 tancarModalResultat();
             }
         });
+        // Qualsevol forma de tancament (X, Esc, clic fora, programàtic):
+        // restaura la cerca prèvia si vam obrir el modal des d'una agrupació
+        // desada. Es dispara una sola vegada per cada close natiu.
+        dlgRes.addEventListener("close", restaurarBackupSiCal);
     }
 
     // Filtre live taula

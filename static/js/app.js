@@ -97,13 +97,36 @@ function debounce(fn, ms) {
     };
 }
 async function fetchJson(url, options = {}) {
-    const resp = await fetch(url, options);
-    if (!resp.ok) {
-        let err = `HTTP ${resp.status}`;
-        try { const j = await resp.json(); if (j.error) err = j.error; } catch (_) {}
-        throw new Error(err);
+    let resp;
+    try {
+        resp = await fetch(url, options);
+    } catch (e) {
+        // Error de xarxa abans d'arribar al servidor (offline, DNS, timeout)
+        if (e.name === "AbortError") throw e;
+        const err = new Error("Sembla que no hi ha connexió. Comprova que estàs en línia i torna a provar.");
+        err.kind = "network";
+        throw err;
     }
-    return resp.json();
+    if (!resp.ok) {
+        let missatge = null;
+        try { const j = await resp.json(); if (j.error) missatge = j.error; } catch (_) {}
+        // Per als 503 (DB o motor caigut) afegim suggerència
+        if (resp.status === 503 && !missatge) {
+            missatge = "Un servei intern no respon ara. Reintenta en uns segons; si persisteix, avisa IT.";
+        }
+        if (!missatge) missatge = `Resposta inesperada del servidor (${resp.status}).`;
+        const err = new Error(missatge);
+        err.kind = "http";
+        err.status = resp.status;
+        throw err;
+    }
+    try {
+        return await resp.json();
+    } catch {
+        const err = new Error("El servidor ha respost amb dades incorrectes. Avisa IT.");
+        err.kind = "parse";
+        throw err;
+    }
 }
 
 // ============================================================
@@ -905,7 +928,19 @@ async function agrupar() {
     state.abortAgrupar = new AbortController();
 
     const btn = $("#btn-agrupar");
-    btnLoading(btn, true, "Agrupant…");
+    const btnCancela = $("#btn-cancela-agrupar");
+    btnLoading(btn, true, `Agrupant ${sel.length} ${sel.length === 1 ? "càrrega" : "càrregues"}…`);
+    if (btnCancela) btnCancela.hidden = false;
+
+    // Feedback per a agrupacions llargues
+    const t3s = setTimeout(() => {
+        const lbl = btn.querySelector(".btn-label");
+        if (lbl) lbl.textContent = `Agrupant ${sel.length} càrregues, pot trigar uns segons…`;
+    }, 3000);
+    const t20s = setTimeout(() => {
+        showToast("warning", "Encara processant", "L'agrupació triga més del normal. Pots cancel·lar i tornar a provar si cal.");
+    }, 20000);
+
     try {
         const resp = await fetch("/api/agrupar", {
             method: "POST",
@@ -919,9 +954,13 @@ async function agrupar() {
             return;
         }
         if (!resp.ok) {
-            let err = `HTTP ${resp.status}`;
-            try { const j = await resp.json(); if (j.error) err = j.error; } catch (_) {}
-            throw new Error(err);
+            let missatge = null;
+            try { const j = await resp.json(); if (j.error) missatge = j.error; } catch (_) {}
+            if (!missatge && resp.status === 503) {
+                missatge = "El motor d'embalatges no respon ara. Reintenta en uns segons.";
+            }
+            if (!missatge) missatge = `Resposta inesperada del servidor (${resp.status}).`;
+            throw new Error(missatge);
         }
         const resultat = await resp.json();
         state.resultat = resultat;
@@ -935,8 +974,18 @@ async function agrupar() {
         showToast("success", "Agrupació completada",
             `${resultat.carregues.length} càrregues, ${resultat.productes.length} productes, ${palets} palets físics${resumPalets ? ` (${resumPalets})` : ""}.`);
     } catch (e) {
-        if (e.name !== "AbortError") showToast("error", "Error agrupant", e.message);
+        if (e.name === "AbortError") {
+            showToast("info", "Agrupació cancel·lada", "Has aturat el procés.");
+        } else if (e.message && (e.message.includes("Failed to fetch") || e.name === "TypeError")) {
+            showToast("error", "Sense connexió", "No s'ha pogut contactar amb el servidor. Comprova la xarxa.");
+        } else {
+            showToast("error", "No s'ha pogut agrupar", e.message);
+        }
     } finally {
+        clearTimeout(t3s);
+        clearTimeout(t20s);
+        state.abortAgrupar = null;
+        if (btnCancela) btnCancela.hidden = true;
         btnLoading(btn, false);
         actualitzarBotoAgrupar();
     }
@@ -1909,6 +1958,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Botons selecció / agrupar
     $("#check-all").addEventListener("change", (e) => marcarTotes(e.target.checked));
     $("#btn-agrupar").addEventListener("click", agrupar);
+    $("#btn-cancela-agrupar")?.addEventListener("click", () => {
+        if (state.abortAgrupar) state.abortAgrupar.abort();
+    });
     $("#btn-desselecciona").addEventListener("click", () => marcarTotes(false));
     $("#btn-exportar-csv").addEventListener("click", exportarCsv);
     $("#btn-imprimir").addEventListener("click", imprimirInforme);

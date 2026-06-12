@@ -9,14 +9,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import agrupacions_store  # noqa: E402
 
-
-@pytest.fixture
-def store_tmp(tmp_path, monkeypatch):
-    """Substitueix el directori de dades per un tmp i invalida el cache d'índex."""
-    monkeypatch.setattr(agrupacions_store, "_DIR", str(tmp_path))
-    agrupacions_store._invalidar_index()
-    yield tmp_path
-    agrupacions_store._invalidar_index()
+# La fixture `store_tmp` ara viu a conftest.py i fa TRUNCATE de les taules
+# de PostgreSQL en lloc d'usar un directori temporal. Els tests que cridin
+# `store_tmp` faran skip automàticament si no hi ha PG_HOST configurat.
 
 
 def _resultat(productes=("ART1",)):
@@ -92,18 +87,11 @@ def test_index_carrega_present_en_dues_agrupacions(store_tmp):
     assert len(idx[cid]) == 2
 
 
-def test_index_es_recalcula_quan_canvia_directori(store_tmp):
+def test_index_es_recalcula_despres_eliminar(store_tmp):
     info = agrupacions_store.guardar("X", [_carrega("2026/01/0000007")], _resultat())
     assert "2026/01/0000007" in agrupacions_store.index_carregues_agrupades()
     agrupacions_store.eliminar(info["id"])
     assert "2026/01/0000007" not in agrupacions_store.index_carregues_agrupades()
-
-
-def test_index_ignora_fitxers_corruptes(store_tmp):
-    # Fitxer JSON invàlid → no peta, només l'ignora.
-    bad = store_tmp / "abcdef1234567890.json"
-    bad.write_text("not json{}", encoding="utf-8")
-    assert agrupacions_store.index_carregues_agrupades() == {}
 
 
 # --- reset_preparats ------------------------------------------------------

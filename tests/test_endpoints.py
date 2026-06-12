@@ -25,15 +25,12 @@ sys.modules.setdefault("models", _models)
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    import agrupacions_store
-    monkeypatch.setattr(agrupacions_store, "_DIR", str(tmp_path))
-    agrupacions_store._invalidar_index()
+def client(store_tmp):
+    """test_client de Flask amb la BD ja netejada per la fixture compartida."""
     import app as app_module
     app_module.app.config["TESTING"] = True
     with app_module.app.test_client() as c:
         yield c
-    agrupacions_store._invalidar_index()
 
 
 def _carrega(cid="2026/01/0000001"):

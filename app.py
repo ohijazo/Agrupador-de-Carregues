@@ -309,7 +309,7 @@ def api_agrupacions_producte(id_):
     if err:
         return _err_validacio(err)
     preparat = bool(body.get("preparat"))
-    obj = agrupacions_store.marca_producte(id_, art_codi, preparat)
+    obj = agrupacions_store.marca_producte(id_, art_codi, preparat, ip=request.remote_addr)
     if obj is None:
         return jsonify({"error": "Agrupació no trobada."}), 404
     log.info(
@@ -321,7 +321,7 @@ def api_agrupacions_producte(id_):
 
 @app.route("/api/agrupacions/<id_>/reset-preparats", methods=["POST"])
 def api_agrupacions_reset_preparats(id_):
-    obj = agrupacions_store.reset_preparats(id_)
+    obj = agrupacions_store.reset_preparats(id_, ip=request.remote_addr)
     if obj is None:
         return jsonify({"error": "Agrupació no trobada."}), 404
     log.info("reset preparats agrupacio=%s ip=%s", id_, request.remote_addr)
@@ -395,8 +395,8 @@ def api_agrupar():
 
 @app.route("/health")
 def health():
-    ok_db = ok_motor = False
-    msg_db = msg_motor = ""
+    ok_db = ok_motor = ok_pg = False
+    msg_db = msg_motor = msg_pg = ""
     try:
         conn = connectar()
         try:
@@ -407,16 +407,22 @@ def health():
     except Exception as e:
         msg_db = str(e)[:200]
     try:
+        import db as _db
+        ok_pg, msg_pg = _db.health_ok()
+    except Exception as e:
+        msg_pg = str(e)[:200]
+    try:
         import motor  # noqa: F401
         ok_motor = hasattr(motor, "calcular_embalatges")
         if not ok_motor:
             msg_motor = "motor sense calcular_embalatges"
     except Exception as e:
         msg_motor = str(e)[:200]
-    status = 200 if (ok_db and ok_motor) else 503
+    status = 200 if (ok_db and ok_motor and ok_pg) else 503
     return jsonify({
         "db": {"ok": ok_db, "msg": msg_db},
         "motor": {"ok": ok_motor, "msg": msg_motor},
+        "pg": {"ok": ok_pg, "msg": msg_pg},
     }), status
 
 

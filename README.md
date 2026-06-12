@@ -17,20 +17,47 @@ Aplicació interna per consolidar embalatges de múltiples càrregues de transpo
 ## Requisits
 
 - Python 3.10+
-- SQL Server (la connexió la dóna l'app germana via `PREPARACIO_PATH/.env`).
+- **SQL Server** (només lectura, ERP) — la connexió la dóna l'app germana via `PREPARACIO_PATH/.env`.
 - Drivers ODBC 18 per SQL Server.
+- **PostgreSQL 12+** (persistència local de les agrupacions desades).
 - Node.js 18+ (només per a córrer tests JS).
 
 ## Variables d'entorn
 
-L'app llegeix primer `./.env` local i després `PREPARACIO_PATH/.env` (app germana) com a fallback. Exemple:
+L'app llegeix primer `./.env` local i després `PREPARACIO_PATH/.env` (app germana) com a fallback. Mira `.env.example` per la llista completa:
 
 ```
+# SQL Server (ERP, lectura)
 SQL_SERVER=servidor\instancia
 SQL_DATABASE=nom_bd
 SQL_USER=usuari
 SQL_PASSWORD=secret
 PREPARACIO_PATH=P:\preparacioComandesVenda
+
+# PostgreSQL (persistència agrupacions)
+PG_HOST=labfc.agri-energia.local
+PG_PORT=5432
+PG_DATABASE=agrupaciocarregues
+PG_USER=app_agrupacions
+PG_PASSWORD=...
+```
+
+## Setup PostgreSQL (per IT, una sola vegada)
+
+```sql
+-- Connectat com a admin
+CREATE DATABASE agrupaciocarregues;
+CREATE USER app_agrupacions WITH PASSWORD '...';
+GRANT ALL PRIVILEGES ON DATABASE agrupaciocarregues TO app_agrupacions;
+
+-- Després, connectat com a app_agrupacions a la BD nova:
+\i db/schema.sql
+```
+
+Si hi ha agrupacions desades antigues a `data/agrupacions/*.json`, importa-les:
+
+```bash
+python migrate_json_to_pg.py --backup
 ```
 
 ## Com arrencar
@@ -70,35 +97,46 @@ agrupacioCarregues/
 ├── valida.py                   # Validadors d'inputs (dates, codis, llistes)
 ├── agregador.py                # Lògica d'agrupació (orquestra el motor germà)
 ├── consultes_carregues.py      # Queries SQL (càrregues, albarans, articles, estats)
-├── agrupacions_store.py        # CRUD JSON de les agrupacions desades
+├── agrupacions_store.py        # CRUD a PostgreSQL de les agrupacions desades
+├── db.py                       # Capa de connexió a PostgreSQL (pool psycopg)
+├── db/schema.sql               # Schema PostgreSQL (3 taules + 1 vista)
+├── migrate_json_to_pg.py       # Migrador one-shot dels JSON antics a PG
 ├── models_agrupacio.py         # Dataclasses del resultat
 ├── requirements.txt
 ├── .env.example
-├── data/agrupacions/           # JSONs guardats (creat automàticament)
 ├── templates/
 │   ├── index.html              # Pàgina principal
+│   ├── ajuda.html              # Manual d'usuari (/ajuda)
 │   ├── magatzem_llista.html    # Llistat al magatzem
 │   └── magatzem_prep.html      # Preparació al magatzem
 ├── static/
 │   ├── css/style.css
 │   ├── css/magatzem.css
 │   ├── js/fmt.js               # Helpers de format compartits (testable a Node)
+│   ├── js/dialogs.js           # mostrarConfirmacio / mostrarInput
 │   ├── js/app.js               # Lògica de la pàgina d'oficina
 │   └── js/magatzem.js          # Lògica de la pàgina de magatzem
 └── tests/
-    ├── test_validacions.py     # 28 casos (pytest)
-    └── test_format.mjs         # 14 casos (node --test)
+    ├── conftest.py             # Fixture compartida (PG test BD)
+    ├── test_validacions.py     # Validadors (no necessiten PG)
+    ├── test_agregador.py       # Motor mockejat (no necessiten PG)
+    ├── test_agrupacions_store.py  # Requereix PG_HOST configurat
+    ├── test_endpoints.py       # Requereix PG_HOST configurat
+    └── test_format.mjs         # Tests JS (node --test)
 ```
 
 ## Tests
 
 ```bash
-# Tests Python (validacions)
+# Tests Python — els d'store i endpoints requereixen PG_HOST configurat al .env
+# (si no, fan skip automàticament)
 python -m pytest tests/ -q
 
 # Tests JS (helpers de format)
 node --test tests/test_format.mjs
 ```
+
+Per al CI o desenvolupament local, crea una BD test separada (`agrupaciocarregues_test`) i exporta les variables `PG_*` apuntant-hi abans de córrer pytest.
 
 ## Drece­res de teclat (oficina)
 

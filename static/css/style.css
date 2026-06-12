@@ -566,6 +566,8 @@ body {
     vertical-align: middle;
     line-height: 1.5;
     box-shadow: 0 1px 2px rgba(0,0,0,.1);
+    cursor: pointer;
+    font-family: inherit;
 }
 .badge-grouped:hover { filter: brightness(1.1); }
 .badge-grouped--done {
@@ -590,6 +592,9 @@ body {
     font-weight: 600;
     max-width: 100%;
     line-height: 1.25;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
 }
 .cell-agrupacio:hover { filter: brightness(.97); }
 .cell-agrupacio--done {
@@ -618,6 +623,18 @@ body {
     font-size: .72rem;
     font-variant-numeric: tabular-nums;
 }
+
+/* Botó text-only que es comporta com a enllaç (substitut d'<a> dins diàlegs) */
+.link-button {
+    background: none;
+    border: none;
+    color: var(--primary);
+    padding: 0;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.link-button:hover { color: var(--primary-dark); }
 
 .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .col-check { width: 38px; text-align: center; }

@@ -51,6 +51,7 @@ const state = {
     paginacio: { limit: 500, offset: 0, total: 0 },
     filtresAvancats: { estat: null, art_codi: null, art_descrip: "" },
     resultat: null,
+    agrupacioActualId: null,    // id de l'agrupació desada que estem mirant (null si és nova)
     colorsCarrega: new Map(),  // carrega_id -> {color, bg}
     abortCerca: null,
     abortAgrupar: null,
@@ -557,8 +558,7 @@ function badgeAgrupacioHTML(estat) {
     const cls = estat.tipus === "activa" ? "badge-grouped" : "badge-grouped badge-grouped--done";
     const txt = estat.tipus === "activa" ? "Ja agrupada" : "Agrupada (acabada)";
     const tip = `${estat.info.nom} · ${fmtData(estat.info.ts) || ""}`;
-    const url = `/magatzem/${encodeURIComponent(estat.info.id)}`;
-    return ` <a class="${cls}" href="${url}" target="_blank" rel="noopener" title="${escapeHtml(tip)}" data-role="badge-agrupada">${txt}</a>`;
+    return ` <button type="button" class="${cls}" title="${escapeHtml(tip)}" data-act="obrir-agrupacio" data-id="${escapeHtml(estat.info.id)}">${txt}</button>`;
 }
 
 function crearFilaCarrega(c) {
@@ -604,15 +604,14 @@ function crearFilaCarrega(c) {
 
 function cellAgrupacioHTML(estat) {
     if (!estat) return `<span class="muted">—</span>`;
-    const url = `/magatzem/${encodeURIComponent(estat.info.id)}`;
     const dataStr = fmtData(estat.info.ts) || "";
     const cls = estat.tipus === "finalitzada" ? "cell-agrupacio cell-agrupacio--done" : "cell-agrupacio";
     const dot = estat.tipus === "finalitzada" ? "✓" : "●";
-    return `<a class="${cls}" href="${url}" target="_blank" rel="noopener" title="Obre al magatzem · ${escapeHtml(estat.info.nom)}">
+    return `<button type="button" class="${cls}" data-act="obrir-agrupacio" data-id="${escapeHtml(estat.info.id)}" title="Veure resultat · ${escapeHtml(estat.info.nom)}">
         <span class="cell-agrupacio-dot">${dot}</span>
         <span class="cell-agrupacio-nom">${escapeHtml(estat.info.nom)}</span>
         <span class="cell-agrupacio-data">${escapeHtml(dataStr)}</span>
-    </a>`;
+    </button>`;
 }
 
 function actualitzaFilaCarrega(tr, c, idx) {
@@ -878,6 +877,18 @@ function renderDetallCarrega(data) {
 // ============================================================
 // Agrupar
 // ============================================================
+function actualitzarBotoMagatzem() {
+    const a = $("#btn-veure-magatzem");
+    if (!a) return;
+    if (state.agrupacioActualId) {
+        a.hidden = false;
+        a.href = `/magatzem/${encodeURIComponent(state.agrupacioActualId)}`;
+    } else {
+        a.hidden = true;
+        a.removeAttribute("href");
+    }
+}
+
 async function agrupar() {
     const sel = state.carregues.filter(c => state.seleccio.has(c.carrega_id));
     if (sel.length === 0) return;
@@ -910,7 +921,9 @@ async function agrupar() {
         }
         const resultat = await resp.json();
         state.resultat = resultat;
+        state.agrupacioActualId = null;   // resultat nou, encara no desat
         renderResultat(resultat);
+        actualitzarBotoMagatzem();
         obrirModalResultat();
         const palets = resultat.total_palets_fisics || 0;
         const resumPalets = (resultat.tipus_palets || []).slice(0, 3)
@@ -937,8 +950,7 @@ function mostrarConflicteDuplicats(duplicats) {
     }
     const files = duplicats.map(d => {
         const ag = d.agrupacions[0];
-        const url = `/magatzem/${encodeURIComponent(ag.id)}`;
-        return `<li><code>${escapeHtml(d.carrega_id)}</code> → <a href="${url}" target="_blank" rel="noopener">${escapeHtml(ag.nom)}</a></li>`;
+        return `<li><code>${escapeHtml(d.carrega_id)}</code> → <button type="button" class="link-button" data-act="obrir-agrupacio" data-id="${escapeHtml(ag.id)}">${escapeHtml(ag.nom)}</button></li>`;
     }).join("");
     dlg.innerHTML = `
         <header>
@@ -955,6 +967,13 @@ function mostrarConflicteDuplicats(duplicats) {
         </div>
     `;
     dlg.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => dlg.close()));
+    dlg.querySelectorAll('[data-act="obrir-agrupacio"]').forEach(b => {
+        b.addEventListener("click", () => {
+            dlg.close();
+            const id = b.dataset.id;
+            if (id) carregarAgrupacioDesada(id);
+        });
+    });
     if (typeof dlg.showModal === "function" && !dlg.open) dlg.showModal();
 }
 
@@ -1633,11 +1652,13 @@ async function desarAgrupacioActual() {
     if (nom === null) return;
     const carregues = state.carregues.filter(c => state.seleccio.has(c.carrega_id));
     try {
-        await fetchJson("/api/agrupacions", {
+        const info = await fetchJson("/api/agrupacions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ nom, carregues, resultat: state.resultat }),
         });
+        state.agrupacioActualId = info?.id || null;
+        actualitzarBotoMagatzem();
         showToast("success", "Agrupació desada", `"${nom}" guardada correctament.`);
     } catch (e) {
         showToast("error", "Error desant", e.message);
@@ -1685,8 +1706,10 @@ async function carregarAgrupacioDesada(id) {
         state.carregues = obj.carregues || [];
         state.seleccio = new Set(state.carregues.map(c => c.carrega_id));
         state.resultat = obj.resultat;
+        state.agrupacioActualId = id;
         renderLlistaCarregues();
         renderResultat(state.resultat);
+        actualitzarBotoMagatzem();
         obrirModalResultat();
         $("#desades-dialog")?.close();
         showToast("info", "Agrupació recuperada", obj.nom);
@@ -1770,6 +1793,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const idx = +tr.dataset.idx;
             const carrega = state.carregues.find(c => c.carrega_id === carregaId);
             if (!carrega) return;
+            // Badge / cel·la "Agrupació": obre el modal Resultat amb l'agrupació desada
+            const btnAgrup = ev.target.closest('[data-act="obrir-agrupacio"]');
+            if (btnAgrup) {
+                ev.stopPropagation();
+                const id = btnAgrup.dataset.id;
+                if (id) carregarAgrupacioDesada(id);
+                return;
+            }
             const cb = ev.target.closest('input[data-role="carrega-check"]');
             const btnExp = ev.target.closest('button[data-role="carrega-expand"]');
             if (cb) {

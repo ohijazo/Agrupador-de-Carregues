@@ -333,6 +333,15 @@
         line-height: 1.25 !important;
     }
 
+    /* Sobreescriu el "display: none" de style.css per a main.container
+       (allà s'amaga perquè a l'oficina la impressió s'injecta fora del
+       main; al magatzem el contingut viu dins) */
+    .mag-body main.container {
+        display: block !important;
+        padding: 0 !important;
+        max-width: none !important;
+    }
+
     /* Amaga el que no aporta al paper */
     .mag-header,
     .mag-toolbar,

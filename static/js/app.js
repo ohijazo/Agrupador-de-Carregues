@@ -1817,6 +1817,24 @@ function setupColumnResize() {
     }
 }
 
+function restablirAmpladesColumnes() {
+    const table = $("#taula-carregues");
+    if (!table) return;
+    // Esborra preferència desada
+    const cur = carregarPrefs();
+    delete cur.colWidths;
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cur)); } catch {}
+    // Reaplica amplades per defecte
+    for (const th of $$("thead th", table)) {
+        const col = th.dataset.col;
+        if (!col) continue;
+        const w = COL_WIDTHS_DEFAULT[col];
+        if (w) th.style.width = w + "px";
+        else th.style.width = "";
+    }
+    showToast("info", "Amplades restablertes", "Les columnes han tornat a la seva mida per defecte.");
+}
+
 function iniciaResizeColumna(ev, th) {
     ev.preventDefault();
     ev.stopPropagation();
@@ -2028,6 +2046,10 @@ document.addEventListener("DOMContentLoaded", () => {
     dlg.querySelector("[data-close]").addEventListener("click", () => dlg.close());
     dlg.addEventListener("click", (e) => {
         if (e.target === dlg) dlg.close();
+    });
+    $("#btn-reset-amplades")?.addEventListener("click", () => {
+        restablirAmpladesColumnes();
+        dlg.close();
     });
 
     setupKeyboard();

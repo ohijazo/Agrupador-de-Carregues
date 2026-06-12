@@ -129,20 +129,24 @@ def llistar_carregues(
         """
         where_params.append(art_codi)
 
-    # Suma de kg per càrrega: mateixa lògica que `_pes_per_tunitat` en SQL.
+    # Suma de kg per càrrega. Dues fonts de pes:
+    #   - Sacs (tunitat Sxx): kg = lin_unit × pes per sac (S25 → 25, ...)
+    #   - Granel (tunitat 'GRA'): kg = lin_quan (lin_unit és 0; el pes està al
+    #     camp `lin_quan` directament en kg).
+    #   - 'UNI' (palets, peces…): no compten kg.
     # IMPORTANT: per a cada det_documento resolem una sola `sal` real (via
     # CPALBARA, amb fallback a SERIEALB) ABANS d'agregar amb ALBLINIA. Si
     # juntem "sal directe OR sal via SERIEALB" al JOIN, comptaríem doble quan
     # el mateix número d'albarà existeix en més d'una sèrie a ALBLINIA.
-    # Mateix patró que `resum_carrega` (CROSS APPLY).
     kg_total_sql = """
         ISNULL((
             SELECT SUM(
-                l.lin_unit *
                 CASE
+                    WHEN RTRIM(a.art_descunit) = 'GRA'
+                    THEN l.lin_quan
                     WHEN LEFT(RTRIM(a.art_descunit), 1) = 'S'
                          AND TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT) IS NOT NULL
-                    THEN TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT)
+                    THEN l.lin_unit * TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT)
                     ELSE 0
                 END
             )
@@ -170,8 +174,8 @@ def llistar_carregues(
               AND  d2.sca_serie     = c.sca_serie
               AND  d2.car_numero    = c.car_numero
               AND  d2.det_tipo      IN ('A', 'P')
-              AND  l.lin_unit       > 0
-              AND  RTRIM(a.art_descunit) NOT IN ('UNI', 'GRA')
+              AND  RTRIM(a.art_descunit) <> 'UNI'
+              AND  ( l.lin_unit > 0 OR l.lin_quan > 0 )
         ), 0)
     """
 
@@ -461,7 +465,7 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
             sql_lin = f"""
                 SELECT l.eje_ejercicio, RTRIM(l.sal_codigo) AS sal_codigo, RTRIM(l.cpa_albara) AS cpa_albara,
                        RTRIM(l.art_codi) AS art_codi, RTRIM(a.art_descrip) AS art_descrip,
-                       l.lin_unit AS sacs, RTRIM(a.art_descunit) AS tunitat
+                       l.lin_unit AS sacs, l.lin_quan AS quan, RTRIM(a.art_descunit) AS tunitat
                 FROM   ALBLINIA l WITH (NOLOCK)
                 LEFT JOIN ARTICLES a WITH (NOLOCK) ON a.art_codi = l.art_codi
                 WHERE  {conds_lin}
@@ -475,26 +479,36 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
 
     # Agrupar TOTES les línies per albarà; marquem cada una amb `palletitzable`
     # (palletitzable = tunitat != UNI/GRA i sacs > 0, mateixes regles que el motor).
-    # Així el frontend pot atenuar / amagar les no-palletitzables, però l'usuari
-    # les pot veure si vol.
+    # Per al càlcul de kg:
+    #   - tunitat Sxx (sacs): kg = sacs × pes_per_tunitat (S25 → 25, ...)
+    #   - tunitat 'GRA' (granel): kg = lin_quan (pes directe en kg)
+    #   - 'UNI' o desconegut: kg = 0
     linies_per_alb: dict[tuple[str, str, str], list[dict]] = {}
     for r in lin_rows:
         tun = (r.tunitat or "").strip()
         sacs = int(r.sacs or 0)
+        quan = float(r.quan or 0)
         palletitzable = tun not in ("UNI", "GRA") and sacs > 0
+        if tun == "GRA":
+            kg = quan
+        elif palletitzable:
+            kg = sacs * _pes_per_tunitat(tun)
+        else:
+            kg = 0.0
         key = (r.eje_ejercicio, r.sal_codigo.strip(), r.cpa_albara.strip())
-        kg = sacs * _pes_per_tunitat(tun) if palletitzable else 0.0
         linies_per_alb.setdefault(key, []).append({
             "art_codi": r.art_codi.strip() if r.art_codi else "",
             "art_descrip": (r.art_descrip or "").strip(),
             "sacs": sacs,
+            "quan": quan,
             "tunitat": tun,
             "kg": round(kg, 2),
             "palletitzable": palletitzable,
         })
 
-    # Composar resposta. Els totals reflecteixen NOMÉS línies palletitzables
-    # (és el que el motor d'embalatges considerarà).
+    # Composar resposta. `total_sacs` només compta sacs palletitzables (és
+    # el que el motor d'embalatges utilitzarà). `total_kg` inclou els kg de
+    # qualsevol font: sacs palletitzables + granel.
     total_sacs = 0
     total_kg = 0.0
     out_alb = []
@@ -507,7 +521,7 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
         key_real = (a["eje_ejercicio"], res["sal_real"], a["cpa_albara"])
         linies = linies_per_alb.get(key_real, [])
         a_sacs = sum(l["sacs"] for l in linies if l["palletitzable"])
-        a_kg = sum(l["kg"] for l in linies if l["palletitzable"])
+        a_kg = sum(l["kg"] for l in linies)
         total_sacs += a_sacs
         total_kg += a_kg
         out_alb.append({

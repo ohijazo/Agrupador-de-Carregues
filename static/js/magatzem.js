@@ -125,7 +125,11 @@ let magState = {
     ocultarPrep: false,
     colorsCarrega: new Map(),
     pollTimer: null,
+    lastInteractionTs: 0,    // moment de l'últim tap (per no repintar enmig)
+    pendingRefresh: null,    // objecte rebut durant interacció (s'aplica després)
 };
+
+const INTERACCIO_MS = 1200;  // marge per protegir tocs en curs del polling
 
 function colorPerCarregaIdx(i) {
     return PALETA_MAG[i % PALETA_MAG.length];
@@ -219,18 +223,28 @@ function renderArticles() {
     calculaProgres();
 }
 
-async function refrescar() {
+async function refrescar({ fromPolling = false } = {}) {
     try {
         const obj = await fetchJ(`/api/agrupacions/${encodeURIComponent(magState.id)}`);
+        const ara = Date.now();
+        if (fromPolling && ara - magState.lastInteractionTs < INTERACCIO_MS) {
+            // L'operari ha tocat fa molt poc: no repintem perquè no es perdi
+            // l'enfocament del tap. Guardem el resultat i l'aplicarem més tard.
+            magState.pendingRefresh = obj;
+            return;
+        }
         magState.obj = obj;
         magState.preparats = new Set(obj.productes_preparats || []);
+        magState.pendingRefresh = null;
         renderArticles();
     } catch (e) {
-        toast("error", "No s'ha pogut refrescar: " + e.message);
+        // Errors del polling silenciosos (no embrutim la UI cada 5s)
+        if (!fromPolling) toast("error", "No s'ha pogut refrescar: " + e.message);
     }
 }
 
 async function togglePreparat(artCodi, nouEstat) {
+    magState.lastInteractionTs = Date.now();
     // Feedback tàctil immediat (vibració a tablet/mòbil).
     if (navigator.vibrate) {
         try { navigator.vibrate(nouEstat ? 60 : [30, 40, 30]); } catch {}
@@ -366,13 +380,21 @@ window.magatzemPrep = async function magatzemPrep(id) {
         });
     }
 
-    // Polling de sincronització cada 5s — només quan la pestanya és visible
+    // Polling de sincronització cada 5s — només quan la pestanya és visible.
+    // Si hi ha hagut interacció recent (tap a un check), el render es difereix
+    // perquè no s'esborri el feedback visual mentre l'operari acaba el toc.
     function programaPoll() {
         clearTimeout(magState.pollTimer);
         if (document.hidden) return;
         magState.pollTimer = setTimeout(async () => {
-            await refrescar();
-            programaPoll();
+            await refrescar({ fromPolling: true });
+            // Si s'havia diferit per interacció, reintentem aviat sense esperar
+            // els 5 s sencers
+            if (magState.pendingRefresh) {
+                magState.pollTimer = setTimeout(programaPoll, 1500);
+            } else {
+                programaPoll();
+            }
         }, 5000);
     }
     document.addEventListener("visibilitychange", () => {

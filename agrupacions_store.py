@@ -2,6 +2,13 @@
 
 Cada agrupació té: id (uuid), nom, ts (ISO), carregues (entrada), resultat (resposta),
 i opcionalment estats per producte (per al mode magatzem futur).
+
+Concurrència:
+  - Modificacions (marca_producte, reset_preparats) protegides amb file lock
+    exclusiu (portalocker) per evitar pèrdua d'escriptures si dos clients
+    actuen al mateix moment (per exemple dues tablets de magatzem).
+  - L'índex en memòria està protegit per un threading.Lock perquè dins d'un
+    mateix procés diversos workers WSGI o el polling no calculin alhora.
 """
 from __future__ import annotations
 
@@ -10,6 +17,10 @@ import os
 import re
 import uuid
 from datetime import datetime
+from threading import Lock
+from typing import Callable
+
+import portalocker
 
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "agrupacions")
 _RE_ID = re.compile(r"^[a-f0-9-]{8,40}$")
@@ -18,12 +29,14 @@ _RE_ID = re.compile(r"^[a-f0-9-]{8,40}$")
 # el fingerprint del directori (noms+mtime+mida dels JSON).
 _index_cache: dict[str, list[dict]] | None = None
 _index_cache_key: tuple | None = None
+_index_lock = Lock()
 
 
 def _invalidar_index() -> None:
     global _index_cache, _index_cache_key
-    _index_cache = None
-    _index_cache_key = None
+    with _index_lock:
+        _index_cache = None
+        _index_cache_key = None
 
 
 def _ensure_dir() -> None:
@@ -49,7 +62,9 @@ def guardar(nom: str, carregues: list[dict], resultat: dict) -> dict:
         "resultat": resultat,
         "productes_preparats": [],
     }
-    with open(_path(id_), "w", encoding="utf-8") as f:
+    # Nou fitxer (uuid únic): no cal lock; obrim en "x" per ser estrictes
+    # contra col·lisions impossibles però defensives.
+    with open(_path(id_), "x", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False)
     _invalidar_index()
     return _resumir(obj)
@@ -64,9 +79,9 @@ def llistar() -> list[dict]:
         try:
             with open(os.path.join(_DIR, fname), encoding="utf-8") as f:
                 obj = json.load(f)
-            out.append(_resumir(obj))
         except (OSError, json.JSONDecodeError):
             continue
+        out.append(_resumir(obj))
     out.sort(key=lambda x: x["ts"], reverse=True)
     return out
 
@@ -88,32 +103,57 @@ def eliminar(id_: str) -> bool:
         return False
 
 
-def marca_producte(id_: str, art_codi: str, preparat: bool) -> dict | None:
-    obj = obtenir(id_)
-    if obj is None:
+def _modificar_amb_lock(id_: str, mutator: Callable[[dict], None]) -> dict | None:
+    """Obre el JSON amb lock exclusiu, l'aplica `mutator(obj)` i el reescriu.
+
+    Retorna l'objecte modificat, o None si el fitxer no existeix. El lock
+    garanteix que cap altre procés/thread pugui llegir-modificar-escriure
+    entre mig (evita la classic lost update race).
+    """
+    try:
+        path = _path(id_)
+    except ValueError:
         return None
-    preparats = set(obj.get("productes_preparats") or [])
-    if preparat:
-        preparats.add(art_codi)
-    else:
-        preparats.discard(art_codi)
-    obj["productes_preparats"] = sorted(preparats)
-    with open(_path(id_), "w", encoding="utf-8") as f:
+    try:
+        f = open(path, "r+", encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    try:
+        portalocker.lock(f, portalocker.LOCK_EX)
+        try:
+            obj = json.load(f)
+        except json.JSONDecodeError:
+            return None
+        mutator(obj)
+        f.seek(0)
+        f.truncate()
         json.dump(obj, f, ensure_ascii=False)
+    finally:
+        try:
+            portalocker.unlock(f)
+        except Exception:
+            pass
+        f.close()
     _invalidar_index()
     return obj
+
+
+def marca_producte(id_: str, art_codi: str, preparat: bool) -> dict | None:
+    def _aplicar(obj: dict) -> None:
+        preparats = set(obj.get("productes_preparats") or [])
+        if preparat:
+            preparats.add(art_codi)
+        else:
+            preparats.discard(art_codi)
+        obj["productes_preparats"] = sorted(preparats)
+    return _modificar_amb_lock(id_, _aplicar)
 
 
 def reset_preparats(id_: str) -> dict | None:
     """Desmarca tots els productes preparats d'una agrupació."""
-    obj = obtenir(id_)
-    if obj is None:
-        return None
-    obj["productes_preparats"] = []
-    with open(_path(id_), "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False)
-    _invalidar_index()
-    return obj
+    def _aplicar(obj: dict) -> None:
+        obj["productes_preparats"] = []
+    return _modificar_amb_lock(id_, _aplicar)
 
 
 def _es_finalitzada(obj: dict) -> bool:
@@ -127,7 +167,7 @@ def index_carregues_agrupades() -> dict[str, list[dict]]:
     """Retorna {carrega_id: [{id, nom, ts, finalitzada}, ...]}.
 
     Cacheable: es recalcula quan canvia el fingerprint del directori
-    (noms + mtime_ns + mida dels JSON desats).
+    (noms + mtime_ns + mida dels JSON desats). Thread-safe via _index_lock.
     """
     global _index_cache, _index_cache_key
     _ensure_dir()
@@ -144,8 +184,9 @@ def index_carregues_agrupades() -> dict[str, list[dict]]:
             continue
     stats.sort()
     key = tuple(stats)
-    if _index_cache_key == key and _index_cache is not None:
-        return _index_cache
+    with _index_lock:
+        if _index_cache_key == key and _index_cache is not None:
+            return _index_cache
 
     index: dict[str, list[dict]] = {}
     for fname, _, _ in stats:
@@ -164,8 +205,9 @@ def index_carregues_agrupades() -> dict[str, list[dict]]:
             cid = c.get("carrega_id")
             if cid:
                 index.setdefault(cid, []).append(info)
-    _index_cache = index
-    _index_cache_key = key
+    with _index_lock:
+        _index_cache = index
+        _index_cache_key = key
     return index
 
 

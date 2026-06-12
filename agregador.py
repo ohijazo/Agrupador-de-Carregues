@@ -97,12 +97,18 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                 ))
                 continue
 
-            if not res.embalatges:
+            # Defensiu: si el motor retorna None (no només excepció) registrem
+            # la incidència i continuem amb el següent albarà sense petar.
+            if res is None or not getattr(res, "embalatges", None):
+                estat_str = "-"
+                if res is not None:
+                    estat_attr = getattr(res, "estat", None)
+                    estat_str = estat_attr.value if hasattr(estat_attr, "value") else str(estat_attr)
                 resultat.incidencies.append(Incidencia(
                     carrega_id=c["carrega_id"],
                     albara=f"{a['sal_codigo']}/{a['cpa_albara']}",
                     tipus="warning",
-                    missatge=f"Sense embalatges calculables (estat: {res.estat.value if hasattr(res.estat, 'value') else res.estat}).",
+                    missatge=f"Sense embalatges calculables (estat: {estat_str}).",
                 ))
                 continue
 

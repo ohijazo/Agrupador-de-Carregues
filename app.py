@@ -260,7 +260,12 @@ def api_agrupacions_guardar():
     if not isinstance(resultat, dict):
         return _err_validacio("'resultat' és obligatori.")
     try:
-        return jsonify(agrupacions_store.guardar(nom, carregues, resultat))
+        info = agrupacions_store.guardar(nom, carregues, resultat)
+        log.info(
+            "audit guardar agrupacio=%s nom=%s ip=%s n_carregues=%d",
+            info.get("id"), info.get("nom"), request.remote_addr, info.get("n_carregues", 0),
+        )
+        return jsonify(info)
     except Exception:
         log.exception("agrupacions guardar")
         return _err_genèric()
@@ -277,6 +282,7 @@ def api_agrupacions_obtenir(id_):
 @app.route("/api/agrupacions/<id_>", methods=["DELETE"])
 def api_agrupacions_eliminar(id_):
     if agrupacions_store.eliminar(id_):
+        log.info("audit eliminar agrupacio=%s ip=%s", id_, request.remote_addr)
         return jsonify({"ok": True})
     return jsonify({"error": "Agrupació no trobada."}), 404
 
@@ -291,6 +297,10 @@ def api_agrupacions_producte(id_):
     obj = agrupacions_store.marca_producte(id_, art_codi, preparat)
     if obj is None:
         return jsonify({"error": "Agrupació no trobada."}), 404
+    log.info(
+        "audit marca agrupacio=%s art=%s preparat=%s ip=%s",
+        id_, art_codi, preparat, request.remote_addr,
+    )
     return jsonify({"ok": True, "n_preparats": len(obj.get("productes_preparats") or [])})
 
 

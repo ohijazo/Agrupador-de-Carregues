@@ -121,3 +121,65 @@ def test_reset_preparats_desfas_tot(store_tmp):
 
 def test_reset_preparats_id_inexistent(store_tmp):
     assert agrupacions_store.reset_preparats("a" * 32) is None
+
+
+# --- Concurrència (file lock) -------------------------------------------
+
+def test_marca_producte_concurrent_no_perd_dades(store_tmp):
+    """Dos threads marquen articles DIFERENTS de la mateixa agrupació alhora.
+
+    Sense lock es perd una marcada (lost update). Amb portalocker tots dos
+    han de quedar al productes_preparats final.
+    """
+    import threading
+    info = agrupacions_store.guardar("X", [_carrega()], _resultat(("A", "B", "C", "D")))
+    id_ = info["id"]
+    barrier = threading.Barrier(2)
+
+    def marca(art):
+        barrier.wait()
+        agrupacions_store.marca_producte(id_, art, True)
+
+    t1 = threading.Thread(target=marca, args=("A",))
+    t2 = threading.Thread(target=marca, args=("B",))
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+
+    obj = agrupacions_store.obtenir(id_)
+    assert set(obj["productes_preparats"]) == {"A", "B"}
+
+
+def test_reset_no_corromp_si_concurrent_amb_marca(store_tmp):
+    """Reset + marca simultàniament: el fitxer final ha de quedar consistent
+    (no JSON corrupte). L'ordre pot variar però l'objecte ha de ser vàlid.
+    """
+    import threading
+    info = agrupacions_store.guardar("Y", [_carrega()], _resultat(("A", "B")))
+    id_ = info["id"]
+    agrupacions_store.marca_producte(id_, "A", True)
+    barrier = threading.Barrier(2)
+
+    def reset():
+        barrier.wait()
+        agrupacions_store.reset_preparats(id_)
+
+    def marca():
+        barrier.wait()
+        agrupacions_store.marca_producte(id_, "B", True)
+
+    t1 = threading.Thread(target=reset)
+    t2 = threading.Thread(target=marca)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+
+    obj = agrupacions_store.obtenir(id_)
+    assert obj is not None
+    assert isinstance(obj.get("productes_preparats"), list)
+    # Sigui quin sigui l'ordre, el set és subset de {A, B}
+    assert set(obj["productes_preparats"]).issubset({"A", "B"})
+
+
+def test_id_invalid_a_modificar_no_peta(store_tmp):
+    """Un id que no compleix el regex ha de retornar None, no llançar."""
+    assert agrupacions_store.marca_producte("../etc/passwd", "A", True) is None
+    assert agrupacions_store.reset_preparats("../etc/passwd") is None

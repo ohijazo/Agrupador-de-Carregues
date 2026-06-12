@@ -202,3 +202,41 @@ def test_magatzem_llista_render(client):
 def test_magatzem_prep_404_si_no_existeix(client):
     r = client.get("/magatzem/" + "d" * 32)
     assert r.status_code == 404
+
+
+# --- /api/plantilles ----------------------------------------------------
+def test_guardar_amb_plantilla(client):
+    r = client.post("/api/agrupacions", json={
+        "nom": "Test plantilla",
+        "carregues": [{**_carrega(), "tra_codi": "T01", "transportista": "Trans1"}],
+        "resultat": _resultat(),
+        "plantilla": True,
+    })
+    assert r.status_code == 200
+
+
+def test_llistar_plantilles_vacia(client):
+    r = client.get("/api/plantilles")
+    assert r.status_code == 200
+    assert r.get_json() == []
+
+
+def test_llistar_plantilles_amb_dades(client):
+    # 1 sense plantilla, 1 amb
+    client.post("/api/agrupacions", json={
+        "nom": "Sense",
+        "carregues": [_carrega("2026/01/0000001")],
+        "resultat": _resultat(),
+    })
+    client.post("/api/agrupacions", json={
+        "nom": "Amb plantilla",
+        "carregues": [{**_carrega("2026/01/0000002"), "tra_codi": "T01", "transportista": "T1"}],
+        "resultat": _resultat(),
+        "plantilla": True,
+    })
+    r = client.get("/api/plantilles")
+    assert r.status_code == 200
+    d = r.get_json()
+    assert len(d) == 1
+    assert d[0]["nom"] == "Amb plantilla"
+    assert d[0]["transportistes"][0]["tra_codi"] == "T01"

@@ -183,3 +183,60 @@ def test_id_invalid_a_modificar_no_peta(store_tmp):
     """Un id que no compleix el regex ha de retornar None, no llançar."""
     assert agrupacions_store.marca_producte("../etc/passwd", "A", True) is None
     assert agrupacions_store.reset_preparats("../etc/passwd") is None
+
+
+# --- Plantilles ---------------------------------------------------------
+
+def _carrega_amb_tra(cid, tra_codi, tra_nom):
+    c = _carrega(cid)
+    c["tra_codi"] = tra_codi
+    c["transportista"] = tra_nom
+    return c
+
+
+def test_guardar_plantilla_calcula_meta(store_tmp):
+    info = agrupacions_store.guardar(
+        "Mascó dilluns",
+        [
+            _carrega_amb_tra("2026/01/0000001", "T01", "Mascó SA"),
+            _carrega_amb_tra("2026/01/0000002", "T01", "Mascó SA"),
+            _carrega_amb_tra("2026/01/0000003", "T02", "Altre"),
+        ],
+        _resultat(),
+        plantilla=True,
+    )
+    obj = agrupacions_store.obtenir(info["id"])
+    assert obj["plantilla"] is True
+    meta = obj["plantilla_meta"]
+    assert meta["n_carregues_tipic"] == 3
+    codis = {t["tra_codi"] for t in meta["transportistes"]}
+    assert codis == {"T01", "T02"}
+
+
+def test_guardar_sense_plantilla_no_te_meta(store_tmp):
+    info = agrupacions_store.guardar("Normal", [_carrega()], _resultat(), plantilla=False)
+    obj = agrupacions_store.obtenir(info["id"])
+    assert obj.get("plantilla") is False
+    assert "plantilla_meta" not in obj
+
+
+def test_llistar_plantilles_nomes_les_marcades(store_tmp):
+    agrupacions_store.guardar("A", [_carrega_amb_tra("2026/01/0001", "T01", "X")], _resultat(), plantilla=True)
+    agrupacions_store.guardar("B", [_carrega()], _resultat(), plantilla=False)
+    agrupacions_store.guardar("C", [_carrega_amb_tra("2026/01/0002", "T03", "Z")], _resultat(), plantilla=True)
+    plantilles = agrupacions_store.llistar_plantilles()
+    assert len(plantilles) == 2
+    noms = {p["nom"] for p in plantilles}
+    assert noms == {"A", "C"}
+
+
+def test_llistar_plantilles_amb_transportistes(store_tmp):
+    agrupacions_store.guardar(
+        "X",
+        [_carrega_amb_tra("2026/01/0001", "T01", "Trans U")],
+        _resultat(),
+        plantilla=True,
+    )
+    plantilles = agrupacions_store.llistar_plantilles()
+    assert plantilles[0]["transportistes"][0]["tra_codi"] == "T01"
+    assert plantilles[0]["transportistes"][0]["tra_nom"] == "Trans U"

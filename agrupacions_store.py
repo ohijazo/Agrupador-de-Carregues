@@ -49,7 +49,7 @@ def _path(id_: str) -> str:
     return os.path.join(_DIR, f"{id_}.json")
 
 
-def guardar(nom: str, carregues: list[dict], resultat: dict) -> dict:
+def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = False) -> dict:
     _ensure_dir()
     id_ = uuid.uuid4().hex
     ts = datetime.now().isoformat(timespec="seconds")
@@ -61,13 +61,57 @@ def guardar(nom: str, carregues: list[dict], resultat: dict) -> dict:
         "carregues": carregues,
         "resultat": resultat,
         "productes_preparats": [],
+        "plantilla": bool(plantilla),
     }
+    if plantilla:
+        obj["plantilla_meta"] = _calcular_plantilla_meta(carregues)
     # Nou fitxer (uuid únic): no cal lock; obrim en "x" per ser estrictes
     # contra col·lisions impossibles però defensives.
     with open(_path(id_), "x", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False)
     _invalidar_index()
     return _resumir(obj)
+
+
+def _calcular_plantilla_meta(carregues: list[dict]) -> dict:
+    """Extreu els atributs comuns d'una plantilla a partir de les seves càrregues."""
+    transportistes: dict[str, str] = {}
+    for c in carregues or []:
+        tc = (c.get("tra_codi") or "").strip()
+        if tc:
+            transportistes.setdefault(tc, (c.get("transportista") or "").strip())
+    return {
+        "transportistes": [
+            {"tra_codi": tc, "tra_nom": nm} for tc, nm in sorted(transportistes.items())
+        ],
+        "n_carregues_tipic": len(carregues or []),
+    }
+
+
+def llistar_plantilles() -> list[dict]:
+    """Retorna les agrupacions marcades com plantilla amb meta i nom."""
+    _ensure_dir()
+    out = []
+    for fname in os.listdir(_DIR):
+        if not fname.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(_DIR, fname), encoding="utf-8") as f:
+                obj = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not obj.get("plantilla"):
+            continue
+        meta = obj.get("plantilla_meta") or _calcular_plantilla_meta(obj.get("carregues") or [])
+        out.append({
+            "id": obj.get("id"),
+            "nom": obj.get("nom"),
+            "ts": obj.get("ts"),
+            "transportistes": meta.get("transportistes", []),
+            "n_carregues_tipic": meta.get("n_carregues_tipic", 0),
+        })
+    out.sort(key=lambda x: x["ts"], reverse=True)
+    return out
 
 
 def llistar() -> list[dict]:

@@ -259,15 +259,25 @@ def api_agrupacions_guardar():
     resultat = body.get("resultat")
     if not isinstance(resultat, dict):
         return _err_validacio("'resultat' és obligatori.")
+    plantilla = bool(body.get("plantilla"))
     try:
-        info = agrupacions_store.guardar(nom, carregues, resultat)
+        info = agrupacions_store.guardar(nom, carregues, resultat, plantilla=plantilla)
         log.info(
-            "audit guardar agrupacio=%s nom=%s ip=%s n_carregues=%d",
-            info.get("id"), info.get("nom"), request.remote_addr, info.get("n_carregues", 0),
+            "audit guardar agrupacio=%s nom=%s ip=%s n_carregues=%d plantilla=%s",
+            info.get("id"), info.get("nom"), request.remote_addr, info.get("n_carregues", 0), plantilla,
         )
         return jsonify(info)
     except Exception:
         log.exception("agrupacions guardar")
+        return _err_genèric()
+
+
+@app.route("/api/plantilles", methods=["GET"])
+def api_plantilles_llista():
+    try:
+        return jsonify(agrupacions_store.llistar_plantilles())
+    except Exception:
+        log.exception("plantilles llistar")
         return _err_genèric()
 
 

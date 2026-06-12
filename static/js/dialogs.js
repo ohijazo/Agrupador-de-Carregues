@@ -88,9 +88,17 @@ window.mostrarInput = function mostrarInput(opts = {}) {
     const btnOk = opts.btnOk || "D'acord";
     const btnCancel = opts.btnCancel || "Cancel·la";
     const maxlength = opts.maxlength || 200;
+    // Camp opcional: checkbox amb {label, checked, tooltip}. Si està definit,
+    // la promesa resol amb {valor, marcat} en comptes de només string.
+    const checkbox = opts.checkbox || null;
 
     return new Promise(resolve => {
         const dlg = _crearDialeg("app-dialog-input");
+        const checkHtml = checkbox ? `
+            <label class="app-dialog-check" title="${_escape(checkbox.tooltip || "")}">
+                <input type="checkbox" id="app-dialog-input-check" ${checkbox.checked ? "checked" : ""}>
+                <span>${_escape(checkbox.label || "")}</span>
+            </label>` : "";
         dlg.innerHTML = `
             <header class="app-dialog-header">
                 <h3>${_escape(titol)}</h3>
@@ -100,6 +108,7 @@ window.mostrarInput = function mostrarInput(opts = {}) {
                 ${etiqueta ? `<label for="app-dialog-input-field">${_escape(etiqueta)}</label>` : ""}
                 <input type="text" id="app-dialog-input-field" class="app-dialog-input"
                        value="${_escape(defecte)}" placeholder="${_escape(placeholder)}" maxlength="${maxlength}" autocomplete="off">
+                ${checkHtml}
             </form>
             <footer class="app-dialog-footer">
                 <button type="button" class="btn btn-ghost" data-act="cancel">${_escape(btnCancel)}</button>
@@ -107,8 +116,12 @@ window.mostrarInput = function mostrarInput(opts = {}) {
             </footer>
         `;
         const input = dlg.querySelector("#app-dialog-input-field");
+        const check = dlg.querySelector("#app-dialog-input-check");
         const form = dlg.querySelector("form");
         let resolt = false;
+        const valorOK = () => checkbox
+            ? { valor: input.value, marcat: !!check?.checked }
+            : input.value;
         const fi = (valor) => {
             if (resolt) return;
             resolt = true;
@@ -116,12 +129,12 @@ window.mostrarInput = function mostrarInput(opts = {}) {
             resolve(valor);
         };
         dlg.querySelector('[data-act="ok"]').addEventListener("click", () => {
-            fi(input.value);
+            fi(valorOK());
         }, { once: true });
         dlg.querySelectorAll('[data-act="cancel"]').forEach(b =>
             b.addEventListener("click", () => fi(null), { once: true })
         );
-        form.addEventListener("submit", (e) => { e.preventDefault(); fi(input.value); }, { once: true });
+        form.addEventListener("submit", (e) => { e.preventDefault(); fi(valorOK()); }, { once: true });
         dlg.addEventListener("cancel", (e) => { e.preventDefault(); fi(null); }, { once: true });
         dlg.addEventListener("close", () => fi(null), { once: true });
         if (typeof dlg.showModal === "function") dlg.showModal();

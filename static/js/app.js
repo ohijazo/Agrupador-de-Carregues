@@ -55,7 +55,11 @@ const state = {
     colorsCarrega: new Map(),  // carrega_id -> {color, bg}
     abortCerca: null,
     abortAgrupar: null,
+    plantilles: [],            // llista de plantilles desades (GET /api/plantilles)
+    plantillesTancades: new Set(),  // ids tancades per l'usuari en aquesta cerca
 };
+
+const PLANTILLA_MIN_COMPATIBLES = 2;  // llindar per mostrar el banner
 
 let _storageWarned = false;
 function carregarPrefs() {
@@ -499,7 +503,10 @@ async function buscarCarregues(append = false) {
         }
         state.paginacio.total = total;
         state.paginacio.offset = state.carregues.length;
+        // Nova cerca: oblidem els banners tancats prèviament
+        if (!append) state.plantillesTancades.clear();
         renderLlistaCarregues();
+        actualitzarBannerPlantilles();
     } catch (e) {
         if (e.name !== "AbortError") {
             showToast("error", "Error cercant càrregues", e.message);
@@ -1701,28 +1708,38 @@ function setupAutocompleteArticle() {
 // ============================================================
 async function desarAgrupacioActual() {
     if (!state.resultat) return;
-    const nom = await window.mostrarInput({
+    const resp = await window.mostrarInput({
         titol: "Desa l'agrupació",
         etiqueta: "Nom de l'agrupació",
         defecte: `Agrupació ${fmtDataHora(new Date())}`,
         placeholder: "Ex: Càrregues dilluns matí",
         btnOk: "Desa",
+        checkbox: {
+            label: "⭐ Plantilla recurrent (l'app suggerirà aplicar-la quan trobi càrregues similars)",
+            checked: false,
+            tooltip: "Marca-ho si aquesta agrupació es repeteix sovint amb els mateixos transportistes",
+        },
     });
-    if (nom === null) return;
-    if (!nom.trim()) {
+    if (resp === null) return;
+    const nom = (resp.valor || "").trim();
+    if (!nom) {
         showToast("warning", "Cal un nom", "Posa un nom per identificar l'agrupació.");
         return;
     }
+    const plantilla = !!resp.marcat;
     const carregues = state.carregues.filter(c => state.seleccio.has(c.carrega_id));
     try {
         const info = await fetchJson("/api/agrupacions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nom, carregues, resultat: state.resultat }),
+            body: JSON.stringify({ nom, carregues, resultat: state.resultat, plantilla }),
         });
         state.agrupacioActualId = info?.id || null;
         actualitzarBotoMagatzem();
-        showToast("success", "Agrupació desada", `"${nom}" guardada correctament.`);
+        showToast("success", "Agrupació desada",
+            plantilla ? `"${nom}" guardada com a plantilla recurrent.` : `"${nom}" guardada correctament.`);
+        // Refresca plantilles per al banner de suggeriment
+        if (plantilla) await carregarPlantilles();
     } catch (e) {
         showToast("error", "Error desant", e.message);
     }
@@ -1779,6 +1796,90 @@ async function carregarAgrupacioDesada(id) {
     } catch (e) {
         showToast("error", "Error carregant l'agrupació", e.message);
     }
+}
+
+// ============================================================
+// Plantilles d'agrupació recurrents
+// ============================================================
+async function carregarPlantilles() {
+    try {
+        state.plantilles = await fetchJson("/api/plantilles");
+    } catch {
+        state.plantilles = [];
+    }
+}
+
+function carregaCompatible(carrega, plantilla) {
+    const codis = new Set((plantilla.transportistes || []).map(t => t.tra_codi));
+    return codis.has((carrega.tra_codi || "").trim());
+}
+
+function actualitzarBannerPlantilles() {
+    const banner = $("#plantilles-banner");
+    if (!banner) return;
+    if (!state.plantilles.length || !state.carregues.length) {
+        banner.innerHTML = "";
+        banner.hidden = true;
+        return;
+    }
+    const suggeriments = [];
+    for (const p of state.plantilles) {
+        if (state.plantillesTancades.has(p.id)) continue;
+        const compatibles = state.carregues.filter(c => carregaCompatible(c, p));
+        if (compatibles.length >= PLANTILLA_MIN_COMPATIBLES) {
+            suggeriments.push({ plantilla: p, compatibles });
+        }
+    }
+    if (!suggeriments.length) {
+        banner.innerHTML = "";
+        banner.hidden = true;
+        return;
+    }
+    // Render màxim 3 suggeriments
+    banner.innerHTML = suggeriments.slice(0, 3).map(s => {
+        const tras = (s.plantilla.transportistes || []).map(t => t.tra_nom || t.tra_codi).join(", ");
+        return `
+            <div class="plantilla-suggeriment" data-plantilla-id="${escapeHtml(s.plantilla.id)}">
+                <span class="icon" aria-hidden="true">💡</span>
+                <div class="text">
+                    Hi ha <strong>${s.compatibles.length}</strong> càrregues que encaixen amb la plantilla
+                    <strong>${escapeHtml(s.plantilla.nom)}</strong>.
+                    <span class="meta">${escapeHtml(tras)}</span>
+                </div>
+                <div class="actions">
+                    <button type="button" class="btn-aplicar" data-act="aplicar">Aplicar</button>
+                    <button type="button" class="btn-tanca" data-act="tancar" aria-label="Tancar suggeriment">×</button>
+                </div>
+            </div>
+        `;
+    }).join("");
+    banner.hidden = false;
+}
+
+function aplicarPlantilla(plantillaId) {
+    const p = state.plantilles.find(x => x.id === plantillaId);
+    if (!p) return;
+    const compatibles = state.carregues.filter(c => carregaCompatible(c, p));
+    if (!compatibles.length) {
+        showToast("warning", "Sense compatibles", "Cap càrrega encaixa amb aquesta plantilla.");
+        return;
+    }
+    // Pre-selecciona les compatibles (afegeix a la selecció actual, no la reemplaça)
+    let afegides = 0;
+    for (const c of compatibles) {
+        // No seleccionar les ja agrupades (bloquejades)
+        if (estatAgrupacio(c) != null) continue;
+        if (!state.seleccio.has(c.carrega_id)) {
+            state.seleccio.add(c.carrega_id);
+            afegides++;
+        }
+    }
+    renderLlistaCarregues();
+    showToast("success", "Plantilla aplicada",
+        `${afegides} càrrega${afegides === 1 ? "" : "s"} seleccionada${afegides === 1 ? "" : "s"} de la plantilla "${p.nom}".`);
+    // Amaga el banner per a aquesta sessió
+    state.plantillesTancades.add(plantillaId);
+    actualitzarBannerPlantilles();
 }
 
 // ============================================================
@@ -1913,8 +2014,25 @@ document.addEventListener("DOMContentLoaded", () => {
     comprovaHealth();
     carregarTransportistes();
     carregarEstats();
+    carregarPlantilles();
     setupAutocompleteArticle();
     setupColumnResize();
+
+    // Click delegation al banner de plantilles
+    const banner = $("#plantilles-banner");
+    if (banner) {
+        banner.addEventListener("click", (ev) => {
+            const sug = ev.target.closest(".plantilla-suggeriment");
+            if (!sug) return;
+            const id = sug.dataset.plantillaId;
+            if (ev.target.closest('[data-act="aplicar"]')) {
+                aplicarPlantilla(id);
+            } else if (ev.target.closest('[data-act="tancar"]')) {
+                state.plantillesTancades.add(id);
+                actualitzarBannerPlantilles();
+            }
+        });
+    }
     const btnNeteja = $("#btn-neteja-avancats");
     if (btnNeteja) btnNeteja.addEventListener("click", netejaFiltresAvancats);
 

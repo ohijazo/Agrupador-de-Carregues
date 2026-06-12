@@ -624,6 +624,68 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+/* --- Banner de suggeriment de plantilles --- */
+.plantilles-banner {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin: 1rem 0 0;
+}
+.plantilla-suggeriment {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    padding: .65rem 1rem .65rem .9rem;
+    background: linear-gradient(135deg, #fffbe6 0%, #fff8d0 100%);
+    border: 1px solid #f0c14b;
+    border-left: 5px solid #e0a800;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    flex-wrap: wrap;
+}
+.plantilla-suggeriment .icon {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+.plantilla-suggeriment .text {
+    flex: 1 1 280px;
+    font-size: .92rem;
+    color: var(--gray-900);
+}
+.plantilla-suggeriment .text strong { color: #7a5a00; }
+.plantilla-suggeriment .meta {
+    display: block;
+    font-size: .78rem;
+    color: var(--gray-700);
+    margin-top: .15rem;
+}
+.plantilla-suggeriment .actions {
+    display: flex;
+    gap: .4rem;
+    flex-shrink: 0;
+}
+.plantilla-suggeriment .btn-aplicar {
+    background: var(--primary);
+    color: #fff;
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-md);
+    padding: .35rem .9rem;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.plantilla-suggeriment .btn-aplicar:hover { background: var(--primary-dark); }
+.plantilla-suggeriment .btn-tanca {
+    background: none;
+    border: none;
+    color: var(--gray-500);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0 .3rem;
+    line-height: 1;
+}
+.plantilla-suggeriment .btn-tanca:hover { color: var(--gray-900); }
+
 /* --- Diàlegs app (confirmació + input) --- */
 .app-dialog {
     border: none;
@@ -675,6 +737,26 @@ body {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(44,82,130,.15);
 }
+.app-dialog-check {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin-top: .9rem;
+    padding: .55rem .7rem;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    font-size: .9rem;
+    color: var(--gray-700);
+    cursor: pointer;
+}
+.app-dialog-check input[type=checkbox] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+.app-dialog-check:hover { background: var(--gray-100); }
 .app-dialog-footer {
     display: flex;
     justify-content: flex-end;

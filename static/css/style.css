@@ -624,6 +624,72 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+/* --- Diàlegs app (confirmació + input) --- */
+.app-dialog {
+    border: none;
+    border-radius: var(--radius-lg);
+    padding: 0;
+    width: min(440px, 92vw);
+    box-shadow: var(--shadow-lg);
+    background: #fff;
+}
+.app-dialog::backdrop { background: rgba(0,0,0,.45); }
+.app-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .85rem 1.1rem;
+    border-bottom: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+.app-dialog-header h3 { margin: 0; font-size: 1.05rem; }
+.app-dialog-body {
+    padding: 1.1rem 1.25rem;
+}
+.app-dialog-message {
+    margin: 0;
+    font-size: .95rem;
+    color: var(--gray-700);
+    line-height: 1.45;
+}
+.app-dialog-body label {
+    display: block;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    margin-bottom: .35rem;
+}
+.app-dialog-input {
+    width: 100%;
+    padding: .55rem .8rem;
+    border: 1.5px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    background: #fff;
+}
+.app-dialog-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(44,82,130,.15);
+}
+.app-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+    padding: .75rem 1.1rem;
+    background: var(--gray-50);
+    border-top: 1px solid var(--gray-200);
+}
+.btn-danger {
+    background: var(--danger);
+    color: #fff;
+    border-color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) { background: #7a1f1f; border-color: #7a1f1f; }
+
 /* Botó text-only que es comporta com a enllaç (substitut d'<a> dins diàlegs) */
 .link-button {
     background: none;

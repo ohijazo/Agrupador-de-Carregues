@@ -1652,8 +1652,18 @@ function setupAutocompleteArticle() {
 // ============================================================
 async function desarAgrupacioActual() {
     if (!state.resultat) return;
-    const nom = window.prompt("Nom de l'agrupació:", `Agrupació ${fmtDataHora(new Date())}`);
+    const nom = await window.mostrarInput({
+        titol: "Desa l'agrupació",
+        etiqueta: "Nom de l'agrupació",
+        defecte: `Agrupació ${fmtDataHora(new Date())}`,
+        placeholder: "Ex: Càrregues dilluns matí",
+        btnOk: "Desa",
+    });
     if (nom === null) return;
+    if (!nom.trim()) {
+        showToast("warning", "Cal un nom", "Posa un nom per identificar l'agrupació.");
+        return;
+    }
     const carregues = state.carregues.filter(c => state.seleccio.has(c.carrega_id));
     try {
         const info = await fetchJson("/api/agrupacions", {
@@ -1789,7 +1799,14 @@ function iniciaResizeColumna(ev, th) {
 }
 
 async function eliminarAgrupacioDesada(id) {
-    if (!window.confirm("Eliminar aquesta agrupació desada?")) return;
+    const ok = await window.mostrarConfirmacio({
+        titol: "Eliminar agrupació",
+        missatge: "L'agrupació desada quedarà eliminada definitivament. Les seves càrregues tornaran a estar disponibles per agrupar.",
+        btnOk: "Sí, elimina-la",
+        btnCancel: "No",
+        tipus: "danger",
+    });
+    if (!ok) return;
     try {
         await fetchJson(`/api/agrupacions/${encodeURIComponent(id)}`, { method: "DELETE" });
         showToast("success", "Agrupació eliminada");

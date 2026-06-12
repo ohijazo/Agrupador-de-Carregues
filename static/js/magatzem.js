@@ -259,7 +259,14 @@ async function togglePreparat(artCodi, nouEstat) {
 async function desferPreparats() {
     const n = magState.preparats.size;
     if (!n) return;
-    if (!window.confirm(`Desmarcar ${n} producte${n > 1 ? "s" : ""} com a preparat${n > 1 ? "s" : ""}?`)) return;
+    const ok = await window.mostrarConfirmacio({
+        titol: "Desfer preparats",
+        missatge: `Es desmarcaran ${n} producte${n > 1 ? "s" : ""} com a preparat${n > 1 ? "s" : ""}. Vols continuar?`,
+        btnOk: "Sí, desfés-los",
+        btnCancel: "No",
+        tipus: "danger",
+    });
+    if (!ok) return;
     try {
         await fetchJ(`/api/agrupacions/${encodeURIComponent(magState.id)}/reset-preparats`, {
             method: "POST",

@@ -10,7 +10,7 @@ El motor s'importa via sys.path injectat a app.py.
 from collections import defaultdict
 from typing import Iterable
 
-from consultes_carregues import obtenir_albarans_carrega
+from consultes_carregues import obtenir_albarans_carrega, obtenir_descrip_articles
 from models_agrupacio import (
     AgrupacioProducte, CarregaPerProducte, CarregaResumen,
     Incidencia, PaletDetall, ResultatAgrupacio, TipusPaletRecompte,
@@ -198,10 +198,20 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
 
     resultat.total_palets_fisics = palets_fisics_totals
     carrega_idx = {c.carrega_id: i for i, c in enumerate(resultat.carregues)}
+
+    # Enriquim el descrip dels palets amb el text complet d'ARTICLES.
+    # El motor germà retorna sovint una versió escurçada (sense mides), però
+    # per imprimir-ho a paper volem "PALET PLASTIC EUROPEU 120X80" sencer.
+    try:
+        descrips_complets = obtenir_descrip_articles(list(palets_per_tipus.keys()))
+    except Exception:
+        # Si la BD no és accessible no bloquegem el resultat; ens quedem amb el descrip del motor
+        descrips_complets = {}
+
     resultat.tipus_palets = [
         TipusPaletRecompte(
             tipus_palet=tipus,
-            tipus_palet_descrip=info["descrip"] or tipus,
+            tipus_palet_descrip=descrips_complets.get(tipus) or info["descrip"] or tipus,
             quantitat=info["n"],
             per_carrega=[
                 TipusPaletPerCarrega(carrega_id=cid, quantitat=q)

@@ -184,6 +184,37 @@ def llistar_estats_carregues() -> list[dict]:
     return [{"estat": int(r.car_estat) if r.car_estat is not None else None, "n": int(r.n)} for r in rows]
 
 
+def obtenir_descrip_articles(codis: list[str]) -> dict[str, str]:
+    """Retorna {art_codi: art_descrip} complet per a una llista de codis.
+
+    El motor d'embalatges retorna sovint una versió escurçada del descrip
+    (sense mides), però per imprimir-ho a paper volem el text complet
+    tal com el guarden a ARTICLES.
+    """
+    codis = [c for c in (codis or []) if c]
+    if not codis:
+        return {}
+    # Deduplica preservant ordre
+    seen = set()
+    unics = []
+    for c in codis:
+        if c not in seen:
+            seen.add(c)
+            unics.append(c)
+    placeholders = ",".join(["?"] * len(unics))
+    sql = f"""
+        SELECT RTRIM(art_codi) AS art_codi, RTRIM(art_descrip) AS art_descrip
+        FROM   ARTICLES WITH (NOLOCK)
+        WHERE  art_codi IN ({placeholders})
+    """
+    conn = connectar()
+    try:
+        rows = conn.execute(sql, *unics).fetchall()
+    finally:
+        conn.close()
+    return {r.art_codi: (r.art_descrip or "").strip() for r in rows}
+
+
 def cercar_articles(q: str, limit: int = 20) -> list[dict]:
     """Autocompletar articles per codi o descripció. q de 2+ caràcters."""
     q = (q or "").strip()

@@ -421,7 +421,7 @@ function pintaSkeleton(n = 5) {
     for (let i = 0; i < n; i++) {
         const tr = document.createElement("tr");
         tr.className = "skeleton-row";
-        tr.innerHTML = `<td colspan="11"><span class="skeleton-bar" style="width:${60 + Math.random()*30}%"></span></td>`;
+        tr.innerHTML = `<td colspan="9"><span class="skeleton-bar" style="width:${60 + Math.random()*30}%"></span></td>`;
         tbody.appendChild(tr);
     }
     $("#empty-inicial").hidden = true;
@@ -591,11 +591,9 @@ function crearFilaCarrega(c) {
     tr.insertAdjacentHTML("beforeend", `
         <td><code>${escapeHtml(c.carrega_id)}</code>${badgeAgrupacioHTML(estat)}</td>
         <td class="cell-truncate" title="${escapeHtml(c.car_descripcion)}">${escapeHtml(c.car_descripcion || "—")}</td>
-        <td>${escapeHtml(fmtData(c.car_fecsalida || c.car_fecha) || "—")}</td>
+        <td class="col-data">${escapeHtml(fmtData(c.car_fecsalida || c.car_fecha) || "—")}</td>
         <td class="cell-truncate" title="${escapeHtml(c.transportista || c.tra_codi)}">${escapeHtml(c.transportista || c.tra_codi)}</td>
         <td class="cell-truncate" title="${escapeHtml(c.car_matricula)}">${escapeHtml(c.car_matricula)}</td>
-        <td class="cell-truncate" title="${escapeHtml(c.car_nomconductor)}">${escapeHtml(c.car_nomconductor)}</td>
-        <td class="num">${c.car_pesonetocarga ? fmt.format(c.car_pesonetocarga) : "—"}</td>
         <td class="cell-truncate" title="${escapeHtml(c.car_observaciones)}">${escapeHtml(c.car_observaciones)}</td>
         <td class="col-agrupacio">${cellAgrupacioHTML(estat)}</td>
     `);
@@ -664,7 +662,7 @@ function renderLlistaCarregues() {
         return;
     }
     if (llista.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="muted" style="text-align:center;padding:1.5rem;">Cap càrrega coincideix amb el filtre "${escapeHtml(state.filtreText)}".</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:1.5rem;">Cap càrrega coincideix amb el filtre "${escapeHtml(state.filtreText)}".</td></tr>`;
         $("#msg-llista-buida").hidden = true;
         actualitzarBotoAgrupar();
         actualitzarCheckAll();
@@ -822,7 +820,7 @@ async function toggleDetallCarrega(c, tr, btn) {
     const detall = document.createElement("tr");
     detall.className = "row-detall row-detall-carrega";
     const td = document.createElement("td");
-    td.colSpan = 10;
+    td.colSpan = 9;
     td.innerHTML = `<span class="loading-inline"><span class="spinner-inline"></span>Carregant contingut…</span>`;
     detall.appendChild(td);
     tr.parentNode.insertBefore(detall, tr.nextSibling);

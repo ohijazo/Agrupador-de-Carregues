@@ -2047,10 +2047,7 @@ document.addEventListener("DOMContentLoaded", () => {
     dlg.addEventListener("click", (e) => {
         if (e.target === dlg) dlg.close();
     });
-    $("#btn-reset-amplades")?.addEventListener("click", () => {
-        restablirAmpladesColumnes();
-        dlg.close();
-    });
+    $("#btn-reset-amplades")?.addEventListener("click", restablirAmpladesColumnes);
 
     setupKeyboard();
 

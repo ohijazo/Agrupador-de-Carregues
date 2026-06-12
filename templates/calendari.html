@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendari de càrregues</title>
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/calendari.css') }}">
+</head>
+<body>
+
+<header class="app-header">
+    <div class="container header-row">
+        <div>
+            <h1>Calendari de càrregues</h1>
+            <p class="subtitle">Vista mensual per data de sortida</p>
+        </div>
+        <div class="header-help">
+            <a href="/" class="btn btn-icon" title="Torna a l'inici" aria-label="Inici" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">←</a>
+            <a href="/ajuda" target="_blank" rel="noopener" class="btn btn-icon" title="Ajuda completa" aria-label="Ajuda" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">?</a>
+        </div>
+    </div>
+</header>
+
+<section class="cal-toolbar">
+    <div class="container cal-toolbar-row">
+        <div class="cal-nav">
+            <button type="button" id="cal-prev" class="btn btn-ghost" title="Mes anterior" aria-label="Mes anterior">‹</button>
+            <button type="button" id="cal-avui" class="btn btn-ghost" title="Anar a avui">Avui</button>
+            <button type="button" id="cal-next" class="btn btn-ghost" title="Mes següent" aria-label="Mes següent">›</button>
+        </div>
+        <h2 id="cal-titol" class="cal-titol" aria-live="polite"></h2>
+        <div class="cal-stats">
+            <span id="cal-stats-text" class="muted"></span>
+        </div>
+    </div>
+</section>
+
+<main class="container cal-main">
+    <div id="cal-loading" class="muted cal-loading" hidden>Carregant…</div>
+    <div id="cal-error" class="cal-error" hidden></div>
+
+    <div class="cal-wrap">
+        <div class="cal-grid-head" aria-hidden="true">
+            <div><span class="cal-d-long">Dilluns</span><span class="cal-d-short">Dl</span></div>
+            <div><span class="cal-d-long">Dimarts</span><span class="cal-d-short">Dt</span></div>
+            <div><span class="cal-d-long">Dimecres</span><span class="cal-d-short">Dc</span></div>
+            <div><span class="cal-d-long">Dijous</span><span class="cal-d-short">Dj</span></div>
+            <div><span class="cal-d-long">Divendres</span><span class="cal-d-short">Dv</span></div>
+        </div>
+        <div id="cal-grid" class="cal-grid" role="grid" aria-label="Calendari mensual de càrregues"></div>
+    </div>
+
+    <section id="cal-capsetmana" class="cal-capsetmana" hidden>
+        <h3 class="cal-capsetmana-titol">
+            Càrregues en cap de setmana
+            <span class="cal-capsetmana-count">(<span id="cal-capsetmana-comptador">0</span>)</span>
+        </h3>
+        <ul id="cal-capsetmana-llista" class="cal-capsetmana-llista"></ul>
+    </section>
+</main>
+
+<dialog id="cal-modal" class="cal-modal" aria-labelledby="cal-modal-titol">
+    <article class="cal-modal-article">
+        <header class="cal-modal-header">
+            <div class="cal-modal-header-main">
+                <h2 id="cal-modal-titol" class="cal-modal-titol">Càrrega</h2>
+                <div id="cal-modal-meta" class="cal-modal-meta"></div>
+            </div>
+            <button type="button" id="cal-modal-close" class="cal-modal-close" aria-label="Tanca">×</button>
+        </header>
+        <div id="cal-modal-body" class="cal-modal-body"></div>
+    </article>
+</dialog>
+
+<script src="{{ static_url('js/fmt.js') }}"></script>
+<script src="{{ static_url('js/calendari.js') }}"></script>
+</body>
+</html>

@@ -550,6 +550,40 @@ body {
     opacity: .55;
 }
 
+/* --- Flash temporal en arribar via deep-link (?focus=carrega_id) --- */
+@keyframes row-focus-flash-anim {
+    0%   { background: #fef3c7; }
+    50%  { background: #fde68a; }
+    100% { background: transparent; }
+}
+.data-table tbody tr.row-focus-flash > td {
+    animation: row-focus-flash-anim 2s ease-out;
+}
+
+/* --- Línies/càrregues no palletitzables --- */
+/* Atenuades per defecte (visibles, però el motor les ignora). */
+.data-table tbody tr.not-palletitzable > td,
+.data-table tbody tr.not-palletitzable code {
+    color: #8a93a0;
+    font-style: italic;
+}
+.data-table tbody tr.not-palletitzable > td:first-child {
+    box-shadow: inset 6px 0 0 #cbd5e1;
+}
+/* Amaga totalment quan el toggle està actiu. */
+.hide-not-palletitzable .not-palletitzable { display: none !important; }
+
+.toggle-amaga-np {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .85rem;
+    color: #5a6675;
+    cursor: pointer;
+    user-select: none;
+}
+.toggle-amaga-np input { cursor: pointer; }
+
 .badge-grouped {
     display: inline-block;
     margin-left: .4rem;
@@ -853,6 +887,13 @@ body.is-resizing-col * { cursor: col-resize !important; }
 }
 .data-table-mini { font-size: .82rem; }
 .data-table-mini th, .data-table-mini td { padding: .3rem .5rem; }
+
+.albara-pobla {
+    color: var(--gray-700);
+    font-weight: 500;
+    font-size: .85rem;
+    white-space: nowrap;
+}
 
 .badge {
     display: inline-block;

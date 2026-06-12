@@ -117,11 +117,21 @@ def _err_genèric():
 @app.route("/")
 def index():
     avui = date.today()
+    # Deep-link des de /calendari: ?desde=YYYY-MM-DD&fins=YYYY-MM-DD&focus=carrega_id
+    desde_q = (request.args.get("desde") or "").strip()
+    fins_q  = (request.args.get("fins")  or "").strip()
+    focus_q = (request.args.get("focus") or "").strip()
     return render_template(
         "index.html",
-        data_desde=avui.isoformat(),
-        data_fins=(avui + timedelta(days=7)).isoformat(),
+        data_desde=desde_q or avui.isoformat(),
+        data_fins=fins_q or (avui + timedelta(days=7)).isoformat(),
+        focus_carrega=focus_q,
     )
+
+
+@app.route("/calendari")
+def calendari():
+    return render_template("calendari.html")
 
 
 @app.route("/magatzem", strict_slashes=False)

@@ -16,6 +16,7 @@
             <p class="subtitle">Sumatori d'embalatges de múltiples càrregues per producte</p>
         </div>
         <div class="header-help">
+            <a href="/calendari" class="btn btn-icon" title="Calendari mensual" aria-label="Calendari" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">📅</a>
             <button type="button" id="btn-agrupacions-desades" class="btn btn-icon" title="Agrupacions desades" aria-label="Agrupacions desades">★</button>
             <a href="/ajuda" target="_blank" rel="noopener" class="btn btn-icon" title="Ajuda completa" aria-label="Ajuda" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">?</a>
         </div>
@@ -85,6 +86,10 @@
                 <div class="search-box">
                     <input type="search" id="filtre-taula" placeholder="Filtra (ID, transportista, matrícula…)" autocomplete="off">
                 </div>
+                <label class="toggle-amaga-np" title="Amaga càrregues i articles que el motor no pot palletitzar (UNI/GRA o sense sacs)">
+                    <input type="checkbox" id="toggle-amaga-no-palletitzables">
+                    <span>Amaga no-palletitzables</span>
+                </label>
                 <button type="button" id="btn-reset-amplades" class="btn btn-ghost btn-sm" title="Restablir amplades de columnes a la mida per defecte">↺ Amplades</button>
             </div>
         </header>
@@ -222,6 +227,7 @@
 
 </main>
 
+<script>window.__FOCUS_CARREGA__ = {{ (focus_carrega or '')|tojson }};</script>
 <script src="{{ static_url('js/fmt.js') }}"></script>
 <script src="{{ static_url('js/palets.js') }}"></script>
 <script src="{{ static_url('js/dialogs.js') }}"></script>

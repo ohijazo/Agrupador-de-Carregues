@@ -65,28 +65,43 @@ def llistar_carregues(
     elif tra_codis is None:
         tra_codis = []
 
-    # Una càrrega és "palettzable" si té com a mínim una línia d'albarà amb
-    # tunitat != UNI/GRA i sacs > 0 (mateixes regles que aplica el motor
-    # d'embalatges). Si no n'hi ha cap, no apareix a la llista per evitar
-    # mostrar càrregues "fantasma" que sortirien amb "0 sacs · 0 kg".
+    # Mostrem TOTES les càrregues del rang (palletitzables i no). El frontend
+    # rep per cada fila un boolean `palletitzable` per marcar-les visualment i
+    # oferir un filtre opcional "Amaga no-palletitzables".
+    #
+    # Una càrrega es considera "palletitzable" si té com a mínim una línia
+    # d'albarà amb tunitat != UNI/GRA i sacs > 0 (les mateixes regles que
+    # aplica el motor d'embalatges).
+    # NOTA: el `sal_codigo` codificat a det_documento és la sèrie del PEDIDO
+    # (sal_SerAlbDefPed); la sèrie real a ALBLINIA pot diferir. Per això
+    # acceptem o sal directe o qualsevol sal mapejat via SERIEALB.
+    exists_palletizable_sql = """
+        EXISTS (
+            SELECT 1
+            FROM   Detcargas d  WITH (NOLOCK)
+            JOIN   ALBLINIA  l  WITH (NOLOCK)
+              ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
+              AND l.cpa_albara    = SUBSTRING(d.det_documento, 7, 7)
+              AND ( l.sal_codigo = SUBSTRING(d.det_documento, 5, 2)
+                    OR EXISTS (
+                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                        WHERE s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                          AND s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                          AND s.sal_codigo       = l.sal_codigo
+                    )
+                  )
+            JOIN   ARTICLES  a  WITH (NOLOCK) ON a.art_codi = l.art_codi
+            WHERE  d.eje_ejercicio = c.eje_ejercicio
+              AND  d.sca_serie     = c.sca_serie
+              AND  d.car_numero    = c.car_numero
+              AND  d.det_tipo      IN ('A', 'P')
+              AND  l.lin_unit      > 0
+              AND  RTRIM(a.art_descunit) NOT IN ('UNI', 'GRA')
+        )
+    """
     where_sql = """
         WHERE  COALESCE(c.car_fecsalida, c.car_fecha) >= ?
           AND  COALESCE(c.car_fecsalida, c.car_fecha) <  ?
-          AND  EXISTS (
-              SELECT 1
-              FROM   Detcargas d  WITH (NOLOCK)
-              JOIN   ALBLINIA  l  WITH (NOLOCK)
-                ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
-                AND l.sal_codigo    = SUBSTRING(d.det_documento, 5, 2)
-                AND l.cpa_albara    = SUBSTRING(d.det_documento, 7, 7)
-              JOIN   ARTICLES  a  WITH (NOLOCK) ON a.art_codi = l.art_codi
-              WHERE  d.eje_ejercicio = c.eje_ejercicio
-                AND  d.sca_serie     = c.sca_serie
-                AND  d.car_numero    = c.car_numero
-                AND  d.det_tipo      IN ('A', 'P')
-                AND  l.lin_unit      > 0
-                AND  RTRIM(a.art_descunit) NOT IN ('UNI', 'GRA')
-          )
     """
     where_params: list = [desde_d, fins_d]
     if tra_codis:
@@ -114,6 +129,52 @@ def llistar_carregues(
         """
         where_params.append(art_codi)
 
+    # Suma de kg per càrrega: mateixa lògica que `_pes_per_tunitat` en SQL.
+    # IMPORTANT: per a cada det_documento resolem una sola `sal` real (via
+    # CPALBARA, amb fallback a SERIEALB) ABANS d'agregar amb ALBLINIA. Si
+    # juntem "sal directe OR sal via SERIEALB" al JOIN, comptaríem doble quan
+    # el mateix número d'albarà existeix en més d'una sèrie a ALBLINIA.
+    # Mateix patró que `resum_carrega` (CROSS APPLY).
+    kg_total_sql = """
+        ISNULL((
+            SELECT SUM(
+                l.lin_unit *
+                CASE
+                    WHEN LEFT(RTRIM(a.art_descunit), 1) = 'S'
+                         AND TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT) IS NOT NULL
+                    THEN TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT)
+                    ELSE 0
+                END
+            )
+            FROM   Detcargas d2  WITH (NOLOCK)
+            CROSS APPLY (
+                SELECT TOP 1 cp.sal_codigo
+                FROM   CPALBARA cp WITH (NOLOCK)
+                WHERE  cp.eje_ejercicio = SUBSTRING(d2.det_documento, 1, 4)
+                  AND  cp.cpa_albara    = SUBSTRING(d2.det_documento, 7, 7)
+                  AND  ( cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2)
+                         OR EXISTS (
+                             SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                             WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
+                               AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
+                               AND  s.sal_codigo       = cp.sal_codigo
+                         ) )
+                ORDER BY CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END
+            ) sal_resolt
+            JOIN   ALBLINIA  l   WITH (NOLOCK)
+              ON  l.eje_ejercicio = SUBSTRING(d2.det_documento, 1, 4)
+              AND l.sal_codigo    = sal_resolt.sal_codigo
+              AND l.cpa_albara    = SUBSTRING(d2.det_documento, 7, 7)
+            JOIN   ARTICLES  a   WITH (NOLOCK) ON a.art_codi = l.art_codi
+            WHERE  d2.eje_ejercicio = c.eje_ejercicio
+              AND  d2.sca_serie     = c.sca_serie
+              AND  d2.car_numero    = c.car_numero
+              AND  d2.det_tipo      IN ('A', 'P')
+              AND  l.lin_unit       > 0
+              AND  RTRIM(a.art_descunit) NOT IN ('UNI', 'GRA')
+        ), 0)
+    """
+
     sql_items = """
         SELECT c.eje_ejercicio,
                RTRIM(c.sca_serie)   AS sca_serie,
@@ -128,7 +189,9 @@ def llistar_carregues(
                RTRIM(c.car_nomconductor) AS car_nomconductor,
                c.car_pesonetocarga,
                c.car_pesoteorico,
-               CAST(c.car_observaciones AS varchar(500)) AS car_observaciones
+               CAST(c.car_observaciones AS varchar(500)) AS car_observaciones,
+               CAST(CASE WHEN """ + exists_palletizable_sql + """ THEN 1 ELSE 0 END AS BIT) AS palletitzable,
+               """ + kg_total_sql + """ AS kg_total
         FROM   Cargas c WITH (NOLOCK)
         LEFT JOIN TRANS t WITH (NOLOCK) ON t.tra_codi = c.tra_codi
     """ + where_sql + """
@@ -161,6 +224,8 @@ def llistar_carregues(
             "car_pesonetocarga": float(r.car_pesonetocarga) if r.car_pesonetocarga is not None else 0.0,
             "car_pesoteorico": float(r.car_pesoteorico) if r.car_pesoteorico is not None else 0.0,
             "car_observaciones": (r.car_observaciones or "").strip(),
+            "palletitzable": bool(r.palletitzable),
+            "kg_total": float(r.kg_total) if r.kg_total is not None else 0.0,
         }
         for r in rows
     ]
@@ -327,82 +392,122 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
 
     conn = connectar()
     try:
-        # 1 query per als clients (CPALBARA + CLIENTS)
-        claus = [(a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]) for a in albarans]
-        placeholders = ",".join(["(?,?,?)"] * len(claus))
-        params: list = []
-        for k in claus:
-            params.extend(k)
-        sql_clients = f"""
-            SELECT cp.eje_ejercicio, RTRIM(cp.sal_codigo) AS sal_codigo, RTRIM(cp.cpa_albara) AS cpa_albara,
-                   RTRIM(cp.cli_codi) AS cli_codi, RTRIM(c.cli_nom) AS cli_nom
-            FROM   CPALBARA cp WITH (NOLOCK)
-            LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi
-            WHERE  (cp.eje_ejercicio, cp.sal_codigo, cp.cpa_albara) IN ({placeholders})
-        """
-        try:
-            client_rows = conn.execute(sql_clients, *params).fetchall()
-        except pyodbc.Error:
-            # Fallback per si la sintaxi de IN tuples no és suportada: OR concatenats
-            conds = " OR ".join(["(cp.eje_ejercicio=? AND cp.sal_codigo=? AND cp.cpa_albara=?)"] * len(claus))
-            sql_clients = f"""
-                SELECT cp.eje_ejercicio, RTRIM(cp.sal_codigo) AS sal_codigo, RTRIM(cp.cpa_albara) AS cpa_albara,
-                       RTRIM(cp.cli_codi) AS cli_codi, RTRIM(c.cli_nom) AS cli_nom
-                FROM   CPALBARA cp WITH (NOLOCK)
-                LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi
-                WHERE  {conds}
-            """
-            client_rows = conn.execute(sql_clients, *params).fetchall()
-        clients = {
-            (r.eje_ejercicio, r.sal_codigo.strip(), r.cpa_albara.strip()): (
-                r.cli_codi.strip() if r.cli_codi else "",
-                r.cli_nom or "",
-            )
-            for r in client_rows
-        }
+        # Pas 1: resoldre la sèrie real (sal_real) per a cada albarà.
+        # Detcargas codifica la sèrie del PEDIDO (sal_SerAlbDefPed); la comanda
+        # real a CPALBARA/ALBLINIA pot tenir una sèrie diferent. SERIEALB és la
+        # taula de mapeig. Provem primer sal directe (cas habitual) i, si no
+        # existeix, traduïm via SERIEALB.sal_SerAlbDefPed.
+        claus_doc = [(a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]) for a in albarans]
+        values_sql = ",".join(["(CAST(? AS varchar(4)), CAST(? AS varchar(2)), CAST(? AS varchar(7)))"] * len(claus_doc))
+        params_resolve: list = []
+        for k in claus_doc:
+            params_resolve.extend(k)
 
-        # 1 query per a totes les línies (ALBLINIA + ARTICLES)
-        conds = " OR ".join(["(l.eje_ejercicio=? AND l.sal_codigo=? AND l.cpa_albara=?)"] * len(claus))
-        sql_lin = f"""
-            SELECT l.eje_ejercicio, RTRIM(l.sal_codigo) AS sal_codigo, RTRIM(l.cpa_albara) AS cpa_albara,
-                   RTRIM(l.art_codi) AS art_codi, RTRIM(a.art_descrip) AS art_descrip,
-                   l.lin_unit AS sacs, RTRIM(a.art_descunit) AS tunitat
-            FROM   ALBLINIA l WITH (NOLOCK)
-            INNER JOIN ARTICLES a WITH (NOLOCK) ON a.art_codi = l.art_codi
-            WHERE  {conds}
-            ORDER  BY l.eje_ejercicio, l.sal_codigo, l.cpa_albara, l.lin_linia
+        sql_resolve = f"""
+            SELECT d.eje_doc, d.sal_doc, d.alb_doc,
+                   RTRIM(cp.sal_codigo) AS sal_real,
+                   RTRIM(cp.cli_codi)   AS cli_codi,
+                   RTRIM(c.cli_nom)     AS cli_nom,
+                   RTRIM(cp.cpa_pobla)  AS cpa_pobla,
+                   RTRIM(cv.adr_pobla)  AS cv_pobla
+            FROM (VALUES {values_sql}) AS d(eje_doc, sal_doc, alb_doc)
+            OUTER APPLY (
+                SELECT TOP 1 cp.sal_codigo, cp.cli_codi, cp.adr_codi, cp.cpa_pobla
+                FROM   CPALBARA cp WITH (NOLOCK)
+                WHERE  cp.eje_ejercicio = d.eje_doc
+                  AND  cp.cpa_albara    = d.alb_doc
+                  AND  ( cp.sal_codigo = d.sal_doc
+                         OR EXISTS (
+                             SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                             WHERE  s.eje_ejercicio    = d.eje_doc
+                               AND  s.sal_SerAlbDefPed = d.sal_doc
+                               AND  s.sal_codigo       = cp.sal_codigo
+                         ) )
+                ORDER BY CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
+            ) cp
+            LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi
+            -- Direcció d'enviament (CLIENVIO): fallback per a `pobla` quan CPALBARA.cpa_pobla és buit.
+            LEFT JOIN CLIENVIO cv WITH (NOLOCK)
+                ON cv.cli_codi = cp.cli_codi AND cv.adr_codi = cp.adr_codi
         """
-        lin_rows = conn.execute(sql_lin, *params).fetchall()
+        resolved_rows = conn.execute(sql_resolve, *params_resolve).fetchall()
+
+        # Mapeig: (eje_doc, sal_doc, alb_doc) -> {sal_real, cli_codi, cli_nom, pobla}
+        resolts: dict[tuple[str, str, str], dict] = {}
+        for r in resolved_rows:
+            sal_real = (r.sal_real or "").strip() or r.sal_doc.strip()
+            pobla = (r.cpa_pobla or "").strip() or (r.cv_pobla or "").strip()
+            resolts[(r.eje_doc.strip(), r.sal_doc.strip(), r.alb_doc.strip())] = {
+                "sal_real": sal_real,
+                "cli_codi": (r.cli_codi or "").strip(),
+                "cli_nom":  (r.cli_nom  or "").strip(),
+                "pobla":    pobla,
+            }
+
+        # Pas 2: buscar línies amb les (eje, sal_real, alb) resoltes.
+        # LEFT JOIN ARTICLES per no perdre línies amb codi sense mestre.
+        claus_real = set()
+        for a in albarans:
+            res = resolts.get((a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]))
+            sal_real = res["sal_real"] if res else a["sal_codigo"]
+            claus_real.add((a["eje_ejercicio"], sal_real, a["cpa_albara"]))
+        claus_real = list(claus_real)
+
+        if claus_real:
+            conds_lin = " OR ".join(["(l.eje_ejercicio=? AND l.sal_codigo=? AND l.cpa_albara=?)"] * len(claus_real))
+            params_lin: list = []
+            for k in claus_real:
+                params_lin.extend(k)
+            sql_lin = f"""
+                SELECT l.eje_ejercicio, RTRIM(l.sal_codigo) AS sal_codigo, RTRIM(l.cpa_albara) AS cpa_albara,
+                       RTRIM(l.art_codi) AS art_codi, RTRIM(a.art_descrip) AS art_descrip,
+                       l.lin_unit AS sacs, RTRIM(a.art_descunit) AS tunitat
+                FROM   ALBLINIA l WITH (NOLOCK)
+                LEFT JOIN ARTICLES a WITH (NOLOCK) ON a.art_codi = l.art_codi
+                WHERE  {conds_lin}
+                ORDER  BY l.eje_ejercicio, l.sal_codigo, l.cpa_albara, l.lin_linia
+            """
+            lin_rows = conn.execute(sql_lin, *params_lin).fetchall()
+        else:
+            lin_rows = []
     finally:
         conn.close()
 
-    # Agrupar línies per albarà (filtrar UNI/GRA i sacs=0, com fa RF1 del motor)
+    # Agrupar TOTES les línies per albarà; marquem cada una amb `palletitzable`
+    # (palletitzable = tunitat != UNI/GRA i sacs > 0, mateixes regles que el motor).
+    # Així el frontend pot atenuar / amagar les no-palletitzables, però l'usuari
+    # les pot veure si vol.
     linies_per_alb: dict[tuple[str, str, str], list[dict]] = {}
     for r in lin_rows:
         tun = (r.tunitat or "").strip()
         sacs = int(r.sacs or 0)
-        if tun in ("UNI", "GRA") or sacs <= 0:
-            continue
+        palletitzable = tun not in ("UNI", "GRA") and sacs > 0
         key = (r.eje_ejercicio, r.sal_codigo.strip(), r.cpa_albara.strip())
-        kg = sacs * _pes_per_tunitat(tun)
+        kg = sacs * _pes_per_tunitat(tun) if palletitzable else 0.0
         linies_per_alb.setdefault(key, []).append({
             "art_codi": r.art_codi.strip() if r.art_codi else "",
             "art_descrip": (r.art_descrip or "").strip(),
             "sacs": sacs,
             "tunitat": tun,
             "kg": round(kg, 2),
+            "palletitzable": palletitzable,
         })
 
-    # Composar resposta
+    # Composar resposta. Els totals reflecteixen NOMÉS línies palletitzables
+    # (és el que el motor d'embalatges considerarà).
     total_sacs = 0
     total_kg = 0.0
     out_alb = []
     for a in albarans:
-        key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"])
-        cli_codi, cli_nom = clients.get(key, ("", ""))
-        linies = linies_per_alb.get(key, [])
-        a_sacs = sum(l["sacs"] for l in linies)
-        a_kg = sum(l["kg"] for l in linies)
+        key_doc = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"])
+        res = resolts.get(key_doc, {"sal_real": a["sal_codigo"], "cli_codi": "", "cli_nom": "", "pobla": ""})
+        cli_codi = res["cli_codi"]
+        cli_nom  = res["cli_nom"]
+        pobla    = res.get("pobla", "")
+        key_real = (a["eje_ejercicio"], res["sal_real"], a["cpa_albara"])
+        linies = linies_per_alb.get(key_real, [])
+        a_sacs = sum(l["sacs"] for l in linies if l["palletitzable"])
+        a_kg = sum(l["kg"] for l in linies if l["palletitzable"])
         total_sacs += a_sacs
         total_kg += a_kg
         out_alb.append({
@@ -410,6 +515,7 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
             "det_tipo": a["det_tipo"],
             "cli_codi": cli_codi,
             "cli_nom": cli_nom,
+            "pobla": pobla,
             "total_sacs": a_sacs,
             "total_kg": round(a_kg, 2),
             "linies": linies,

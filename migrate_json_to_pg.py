@@ -20,6 +20,14 @@ import shutil
 import sys
 from datetime import datetime
 
+# Windows: força UTF-8 a la consola perquè els ✓ ✗ → no peten amb cp1252
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except OSError:
+            pass
+
 # Carrega .env abans d'importar `db`
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -180,6 +188,7 @@ def main() -> int:
                 print(f"  ⚠ no s'ha pogut moure {obj['_fname']}: {e}", file=sys.stderr)
         print(f"Fitxers JSON moguts a {_DIR_BACKUP}")
 
+    db.close_pool()
     return 0 if n_err == 0 else 1
 
 

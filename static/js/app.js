@@ -512,6 +512,7 @@ async function buscarCarregues(append = false) {
         if (!append) state.plantillesTancades.clear();
         renderLlistaCarregues();
         actualitzarBannerPlantilles();
+        if (!append) aplicaFocusPendent();
     } catch (e) {
         if (e.name !== "AbortError") {
             showToast("error", "Error cercant càrregues", e.message);
@@ -520,6 +521,23 @@ async function buscarCarregues(append = false) {
     } finally {
         btnLoading(btn, false);
     }
+}
+
+// ============================================================
+// Deep-link des de /calendari: ?focus=carrega_id
+// Si arriba un id, scroll a la fila i flash visual un cop renderitzada.
+// ============================================================
+function aplicaFocusPendent() {
+    const target = (window.__FOCUS_CARREGA__ || "").trim();
+    if (!target) return;
+    window.__FOCUS_CARREGA__ = "";  // consumeix-lo: només una vegada per pàgina
+    requestAnimationFrame(() => {
+        const tr = document.querySelector(`#taula-carregues tbody tr[data-carrega-id="${CSS.escape(target)}"]`);
+        if (!tr) return;
+        tr.scrollIntoView({ behavior: "smooth", block: "center" });
+        tr.classList.add("row-focus-flash");
+        setTimeout(() => tr.classList.remove("row-focus-flash"), 2200);
+    });
 }
 
 // ============================================================
@@ -600,6 +618,10 @@ function crearFilaCarrega(c) {
     const tr = document.createElement("tr");
     tr.dataset.carregaId = c.carrega_id;
     tr.classList.add("row-clickable");
+    if (c.palletitzable === false) {
+        tr.classList.add("not-palletitzable");
+        tr.title = "Càrrega sense línies palletitzables (només UNI/GRA o sacs=0)";
+    }
 
     const tdCheck = document.createElement("td");
     tdCheck.className = "col-check";
@@ -880,22 +902,30 @@ function renderDetallCarrega(data) {
         return `<span class="muted">Aquesta càrrega no té albarans associats a Detcargas.</span>`;
     }
     const blocks = data.albarans.map(a => {
-        const linies = a.linies.map(l => `
-            <tr>
+        const linies = a.linies.map(l => {
+            const np = l.palletitzable === false;
+            const cls = np ? ' class="not-palletitzable"' : '';
+            const tip = np ? ' title="No palletitzable: el motor d\'embalatges ignora aquesta línia"' : '';
+            return `
+            <tr${cls}${tip}>
                 <td><code>${escapeHtml(l.art_codi)}</code></td>
                 <td>${escapeHtml(l.art_descrip)}</td>
                 <td>${escapeHtml(l.tunitat)}</td>
                 <td class="num">${fmt.format(l.sacs)}</td>
                 <td class="num">${fmtKg.format(l.kg)}</td>
             </tr>
-        `).join("");
+        `;
+        }).join("");
         const tipoBadge = a.det_tipo === "P"
             ? `<span class="badge badge-warn" title="Comanda pendent">P</span>`
             : `<span class="badge badge-ok" title="Albarà">A</span>`;
+        const poblaHtml = a.pobla
+            ? ` · <span class="albara-pobla" title="Població d'enviament"><span aria-hidden="true">📍</span> ${escapeHtml(a.pobla)}</span>`
+            : "";
         return `
             <div class="albara-block">
                 <h4>
-                    <span><code>${escapeHtml(a.albara)}</code> ${tipoBadge} · ${escapeHtml(a.cli_codi)} ${escapeHtml(a.cli_nom)}</span>
+                    <span><code>${escapeHtml(a.albara)}</code> ${tipoBadge} · ${escapeHtml(a.cli_codi)} ${escapeHtml(a.cli_nom)}${poblaHtml}</span>
                     <span class="muted">${fmt.format(a.total_sacs)} sacs · ${fmtKg.format(a.total_kg)} kg</span>
                 </h4>
                 <table class="data-table data-table-mini">
@@ -2157,6 +2187,22 @@ document.addEventListener("DOMContentLoaded", () => {
         renderLlistaCarregues();
     }, 150);
     filtreInput.addEventListener("input", aplicaFiltre);
+
+    // Toggle "Amaga no-palletitzables" — persistit a localStorage.
+    // Posa la classe `hide-not-palletitzable` a la secció del llistat;
+    // el CSS s'encarrega d'amagar tant files (TR) com línies de detall.
+    const toggleNP = $("#toggle-amaga-no-palletitzables");
+    const seccioLlista = $("#seccio-llista");
+    if (toggleNP && seccioLlista) {
+        const TOGGLE_KEY = "agrupacio_amaga_no_palletitzables";
+        try { toggleNP.checked = localStorage.getItem(TOGGLE_KEY) === "1"; } catch (e) {}
+        const aplicaToggleNP = () => {
+            seccioLlista.classList.toggle("hide-not-palletitzable", toggleNP.checked);
+            try { localStorage.setItem(TOGGLE_KEY, toggleNP.checked ? "1" : "0"); } catch (e) {}
+        };
+        aplicaToggleNP();
+        toggleNP.addEventListener("change", aplicaToggleNP);
+    }
 
     // Ordenació amb suport teclat
     const sortable = (sel, fn) => {

@@ -65,16 +65,27 @@ def llistar_carregues(
     elif tra_codis is None:
         tra_codis = []
 
+    # Una càrrega és "palettzable" si té com a mínim una línia d'albarà amb
+    # tunitat != UNI/GRA i sacs > 0 (mateixes regles que aplica el motor
+    # d'embalatges). Si no n'hi ha cap, no apareix a la llista per evitar
+    # mostrar càrregues "fantasma" que sortirien amb "0 sacs · 0 kg".
     where_sql = """
         WHERE  COALESCE(c.car_fecsalida, c.car_fecha) >= ?
           AND  COALESCE(c.car_fecsalida, c.car_fecha) <  ?
           AND  EXISTS (
               SELECT 1
-              FROM   Detcargas d WITH (NOLOCK)
+              FROM   Detcargas d  WITH (NOLOCK)
+              JOIN   ALBLINIA  l  WITH (NOLOCK)
+                ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
+                AND l.sal_codigo    = SUBSTRING(d.det_documento, 5, 2)
+                AND l.cpa_albara    = SUBSTRING(d.det_documento, 7, 7)
+              JOIN   ARTICLES  a  WITH (NOLOCK) ON a.art_codi = l.art_codi
               WHERE  d.eje_ejercicio = c.eje_ejercicio
                 AND  d.sca_serie     = c.sca_serie
                 AND  d.car_numero    = c.car_numero
                 AND  d.det_tipo      IN ('A', 'P')
+                AND  l.lin_unit      > 0
+                AND  RTRIM(a.art_descunit) NOT IN ('UNI', 'GRA')
           )
     """
     where_params: list = [desde_d, fins_d]

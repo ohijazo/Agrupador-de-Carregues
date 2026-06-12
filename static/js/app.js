@@ -940,9 +940,7 @@ async function agrupar() {
     state.abortAgrupar = new AbortController();
 
     const btn = $("#btn-agrupar");
-    const btnCancela = $("#btn-cancela-agrupar");
     btnLoading(btn, true, `Agrupant ${sel.length} ${sel.length === 1 ? "càrrega" : "càrregues"}…`);
-    if (btnCancela) btnCancela.hidden = false;
 
     // Feedback per a agrupacions llargues
     const t3s = setTimeout(() => {
@@ -950,7 +948,7 @@ async function agrupar() {
         if (lbl) lbl.textContent = `Agrupant ${sel.length} càrregues, pot trigar uns segons…`;
     }, 3000);
     const t20s = setTimeout(() => {
-        showToast("warning", "Encara processant", "L'agrupació triga més del normal. Pots cancel·lar i tornar a provar si cal.");
+        showToast("warning", "Encara processant", "L'agrupació triga més del normal. Prem Esc per cancel·lar si cal.");
     }, 20000);
 
     try {
@@ -999,7 +997,6 @@ async function agrupar() {
         clearTimeout(t3s);
         clearTimeout(t20s);
         state.abortAgrupar = null;
-        if (btnCancela) btnCancela.hidden = true;
         btnLoading(btn, false);
         actualitzarBotoAgrupar();
     }
@@ -2128,9 +2125,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // Botons selecció / agrupar
     $("#check-all").addEventListener("change", (e) => marcarTotes(e.target.checked));
     $("#btn-agrupar").addEventListener("click", agrupar);
-    $("#btn-cancela-agrupar")?.addEventListener("click", () => {
-        if (state.abortAgrupar) state.abortAgrupar.abort();
-    });
     $("#btn-desselecciona").addEventListener("click", () => marcarTotes(false));
     $("#btn-exportar-csv").addEventListener("click", exportarCsv);
     $("#btn-imprimir").addEventListener("click", imprimirInforme);

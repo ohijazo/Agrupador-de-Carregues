@@ -2038,15 +2038,9 @@ document.addEventListener("DOMContentLoaded", () => {
         state.ordenacioProductes = { ...prefs.ordenacioProductes };
     }
 
-    if (prefs.filtresAvancats) {
-        state.filtresAvancats = { ...state.filtresAvancats, ...prefs.filtresAvancats };
-    }
-
     comprovaHealth();
     carregarTransportistes();
-    carregarEstats();
     carregarPlantilles();
-    setupAutocompleteArticle();
     setupColumnResize();
 
     // Click delegation al banner de plantilles
@@ -2064,9 +2058,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
-    const btnNeteja = $("#btn-neteja-avancats");
-    if (btnNeteja) btnNeteja.addEventListener("click", netejaFiltresAvancats);
-
     // Filtres ràpids
     $$(".chip-btn").forEach(b => {
         b.addEventListener("click", () => aplicaFiltreRapid(b.dataset.range));

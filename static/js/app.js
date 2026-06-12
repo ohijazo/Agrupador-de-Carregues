@@ -1722,6 +1722,72 @@ async function carregarAgrupacioDesada(id) {
     }
 }
 
+// ============================================================
+// Resize de columnes a la taula de càrregues
+// ============================================================
+const COL_WIDTHS_DEFAULT = {
+    "carrega_id": 170,
+    "car_descripcion": 180,
+    "car_fecsalida": 110,
+    "transportista": 180,
+    "car_matricula": 110,
+    "car_observaciones": 220,
+    "agrupacio_nom": 220,
+};
+
+function setupColumnResize() {
+    const table = $("#taula-carregues");
+    if (!table) return;
+    table.classList.add("is-resizable");
+
+    const prefs = carregarPrefs();
+    const saved = prefs.colWidths || {};
+    const ths = $$("thead th", table);
+    for (const th of ths) {
+        const col = th.dataset.col;
+        if (!col) continue;
+        const w = saved[col] || COL_WIDTHS_DEFAULT[col];
+        if (w) th.style.width = w + "px";
+        if (col === "check" || col === "expand") continue;
+        const handle = document.createElement("span");
+        handle.className = "th-resizer";
+        handle.addEventListener("mousedown", (e) => iniciaResizeColumna(e, th));
+        // Evita que el click al handle dispari l'ordenació
+        handle.addEventListener("click", (e) => e.stopPropagation());
+        th.appendChild(handle);
+    }
+}
+
+function iniciaResizeColumna(ev, th) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const startX = ev.clientX;
+    const startW = th.getBoundingClientRect().width;
+    const col = th.dataset.col;
+    const handle = th.querySelector(".th-resizer");
+    document.body.classList.add("is-resizing-col");
+    handle?.classList.add("is-active");
+
+    const move = (e) => {
+        const w = Math.max(40, Math.round(startW + (e.clientX - startX)));
+        th.style.width = w + "px";
+    };
+    const up = () => {
+        document.body.classList.remove("is-resizing-col");
+        handle?.classList.remove("is-active");
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        const w = parseInt(th.style.width, 10);
+        if (col && w) {
+            const cur = carregarPrefs();
+            const colWidths = { ...(cur.colWidths || {}), [col]: w };
+            guardarPrefs({ colWidths });
+        }
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+}
+
 async function eliminarAgrupacioDesada(id) {
     if (!window.confirm("Eliminar aquesta agrupació desada?")) return;
     try {
@@ -1764,6 +1830,7 @@ document.addEventListener("DOMContentLoaded", () => {
     carregarTransportistes();
     carregarEstats();
     setupAutocompleteArticle();
+    setupColumnResize();
     const btnNeteja = $("#btn-neteja-avancats");
     if (btnNeteja) btnNeteja.addEventListener("click", netejaFiltresAvancats);
 

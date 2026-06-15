@@ -1490,7 +1490,7 @@ function renderTaulaProductes() {
             <td>${checkHTML}<code>${escapeHtml(p.art_codi)}</code></td>
             <td>${escapeHtml(p.art_descrip)}</td>
             <td>${escapeHtml(p.tunitat)}</td>
-            <td class="col-carregues-dots">${dotsProd}</td>
+            <td class="col-carregues-dots"><div class="col-carregues-dots-wrap">${dotsProd}</div></td>
             <td class="num"><strong>${fmt.format(p.total_sacs)}</strong></td>
             <td class="num">${fmtKg.format(p.total_kg)}</td>
         `;

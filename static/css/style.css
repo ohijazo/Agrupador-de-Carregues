@@ -1130,8 +1130,12 @@ body.is-resizing-col * { cursor: col-resize !important; }
     padding-top: .15rem !important;
     padding-bottom: .15rem !important;
 }
-#taula-productes .col-carregues-dots {
-    display: flex !important;
+/* IMPORTANT: el `display: flex` ha d'anar sobre un div interior, NO sobre
+   el <td>. Si es posa sobre el td, perd el comportament natural de
+   table-cell i no s'estira a l'alçada de la fila — apareix una franja
+   blanca al fons. */
+#taula-productes .col-carregues-dots-wrap {
+    display: flex;
     flex-wrap: wrap;
     gap: .1rem .6rem;
     align-items: center;

@@ -1498,7 +1498,7 @@ function renderTaulaProductes() {
 
         const detall = document.createElement("tr");
         detall.id = idRow;
-        detall.className = "row-detall";
+        detall.className = "row-detall" + (preparat ? " row-detall-preparat" : "");
         detall.hidden = !oberts.has(idRow);
         detall.innerHTML = `<td></td><td colspan="6">${renderPerCarrega(p)}</td>`;
         tbody.appendChild(detall);

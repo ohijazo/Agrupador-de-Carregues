@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <title>Guia de Desplegament - Agrupador de C&agrave;rregues</title>
+    <style>
+        @page { size: A4; margin: 2cm; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #1a202c; max-width: 800px; margin: 0 auto; padding: 2rem; }
+        h1 { color: #2b6cb0; font-size: 20pt; border-bottom: 3px solid #2b6cb0; padding-bottom: 0.5rem; }
+        h2 { color: #2c5282; font-size: 14pt; margin-top: 2rem; border-bottom: 1px solid #bee3f8; padding-bottom: 0.3rem; page-break-after: avoid; }
+        h3 { color: #2d3748; font-size: 12pt; margin-top: 1.5rem; page-break-after: avoid; }
+        code { font-family: 'JetBrains Mono', 'Consolas', monospace; background: #edf2f7; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 10pt; }
+        pre { background: #1a202c; color: #e2e8f0; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 9.5pt; line-height: 1.5; }
+        pre code { background: none; color: inherit; padding: 0; }
+        table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 10pt; }
+        th, td { border: 1px solid #cbd5e0; padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+        th { background: #edf2f7; font-weight: 600; }
+        .info { background: #ebf8ff; border-left: 4px solid #3182ce; padding: 0.6rem 1rem; margin: 0.75rem 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+        .warning { background: #fffbeb; border-left: 4px solid #d69e2e; padding: 0.6rem 1rem; margin: 0.75rem 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+        .danger { background: #fff5f5; border-left: 4px solid #e53e3e; padding: 0.6rem 1rem; margin: 0.75rem 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+        .success { background: #f0fff4; border-left: 4px solid #38a169; padding: 0.6rem 1rem; margin: 0.75rem 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+        .header-meta { color: #718096; font-size: 10pt; margin-bottom: 2rem; }
+        .toc { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
+        .toc ol { padding-left: 1.25rem; }
+        .toc a { color: #2b6cb0; text-decoration: none; }
+        ul, ol { padding-left: 1.5rem; }
+        li { margin-bottom: 0.3rem; }
+        .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; color: #a0aec0; font-size: 9pt; text-align: center; }
+    </style>
+</head>
+<body>
+
+<h1>Guia de Desplegament</h1>
+<p style="font-size: 14pt; color: #4a5568; margin-top: -0.5rem;">Agrupador de C&agrave;rregues</p>
+<div class="header-meta">
+    Versi&oacute; 1.0 &mdash; Juny 2026<br>
+    Plataforma objectiu: Ubuntu Server 24.04 LTS<br>
+    Aplicaci&oacute; web Python/Flask amb PostgreSQL local i connexi&oacute; a SQL Server
+</div>
+
+<div class="toc">
+    <strong>Contingut</strong>
+    <ol>
+        <li><a href="#sobre">Sobre l'aplicaci&oacute;</a></li>
+        <li><a href="#requisits">Requisits de la m&agrave;quina virtual</a></li>
+        <li><a href="#arquitectura">Arquitectura de l'aplicaci&oacute;</a></li>
+        <li><a href="#instal">Instal&middot;laci&oacute; de paquets</a></li>
+        <li><a href="#postgres">Configurar PostgreSQL</a></li>
+        <li><a href="#descarrega">Desc&agrave;rrega i configuraci&oacute; de l'aplicaci&oacute;</a></li>
+        <li><a href="#verificacio-manual">Verificaci&oacute; manual</a></li>
+        <li><a href="#servei">Servei systemd amb Gunicorn</a></li>
+        <li><a href="#apache">Apache VirtualHost (proxy invers)</a></li>
+        <li><a href="#xarxa">Xarxa, DNS i tallafocs</a></li>
+        <li><a href="#backup">C&ograve;pia de seguretat (PostgreSQL)</a></li>
+        <li><a href="#verificacio">Llista de verificaci&oacute;</a></li>
+        <li><a href="#manteniment">Manteniment i actualitzacions</a></li>
+        <li><a href="#logs">Logs i monitoratge</a></li>
+        <li><a href="#troubleshooting">Resoluci&oacute; de problemes</a></li>
+        <li><a href="#resum">Resum i temps estimats</a></li>
+    </ol>
+</div>
+
+<div class="success">
+    <strong>Nota:</strong> Aquesta aplicaci&oacute; comparteix servidor amb Lab FC, Comandes Venda i Visites. Molts dels paquets base (Python, Apache, ODBC Driver 18, PostgreSQL, UFW) ja estaran instal&middot;lats. Les seccions afectades ho indiquen amb un av&iacute;s.
+</div>
+
+<div class="warning">
+    <strong>Depend&egrave;ncia obligat&ograve;ria:</strong> L'app de <strong>Comandes Venda</strong> (<code>/var/www/comandes-venda</code>) <strong>ha d'estar ja desplegada al mateix servidor abans</strong> que aquesta. L'Agrupador importa el m&ograve;dul <code>motor.py</code> de Comandes Venda per calcular els embalatges (configurat via la variable <code>PREPARACIO_PATH</code>).
+</div>
+
+<!-- 1. SOBRE L'APP -->
+<h2 id="sobre">1. Sobre l'aplicaci&oacute;</h2>
+<p><strong>Agrupador de C&agrave;rregues</strong> &eacute;s una aplicaci&oacute; web interna que permet als operaris de l'oficina <strong>agrupar c&agrave;rregues</strong> de venda i optimitzar la preparaci&oacute; de palets, redu&iuml;nt el temps d'operari al magatzem. Inclou:</p>
+<ul>
+    <li>Llistat i cerca de c&agrave;rregues amb filtres (transportista, data, estat, article).</li>
+    <li>Vista <strong>calendari mensual</strong> de c&agrave;rregues amb codis de color per transportista i indicador de granel.</li>
+    <li>Agrupacions desades (b&uacute;ssola UUID, plantilles, productes preparats al magatzem).</li>
+    <li>API REST per al frontend (vanilla JS).</li>
+</ul>
+
+<p>El sistema combina dues fonts de dades:</p>
+<ul>
+    <li><strong>SQL Server</strong> (remot, nom&eacute;s lectura) &mdash; ERP <code>GWSV_AGRI</code> a <code>vkais:50058</code>. Cont&eacute; les c&agrave;rregues reals (taules <code>Cargas</code>, <code>Detcargas</code>, <code>ALBLINIA</code>, <code>ARTICLES</code>, etc.).</li>
+    <li><strong>PostgreSQL</strong> (local, lectura/escriptura) &mdash; persist&egrave;ncia de les <em>agrupacions desades</em>, plantilles i productes marcats com a preparats.</li>
+</ul>
+
+<!-- 2. REQUISITS VM -->
+<h2 id="requisits">2. Requisits de la m&agrave;quina virtual</h2>
+
+<h3>Maquinari</h3>
+<table>
+    <tr><th>Recurs</th><th>M&iacute;nim</th><th>Recomanat</th></tr>
+    <tr><td>CPU</td><td>2 vCPU</td><td>4 vCPU</td></tr>
+    <tr><td>RAM</td><td>2 GB</td><td>4 GB</td></tr>
+    <tr><td>Disc</td><td>20 GB</td><td>40 GB</td></tr>
+    <tr><td>SO</td><td>Ubuntu Server 24.04 LTS</td><td></td></tr>
+</table>
+
+<div class="info">
+    Si Lab FC i Comandes Venda ja s&oacute;n al servidor, els recursos s&oacute;n suficients. Nom&eacute;s cal afegir ~500 MB d'espai per aquesta app i ~50 MB/any per a la BD de PostgreSQL.
+</div>
+
+<h3>Programari necessari</h3>
+<table>
+    <tr><th>Component</th><th>Versi&oacute;</th><th>Funci&oacute;</th><th>Ja instal&middot;lat amb Lab FC + Comandes Venda?</th></tr>
+    <tr><td>Ubuntu Server</td><td>24.04 LTS</td><td>Sistema operatiu</td><td>S&iacute;</td></tr>
+    <tr><td>Python</td><td>3.10+</td><td>Runtime de l'aplicaci&oacute;</td><td>S&iacute;</td></tr>
+    <tr><td>Apache2</td><td>2.4+</td><td>Proxy invers</td><td>S&iacute;</td></tr>
+    <tr><td>ODBC Driver 18</td><td>18.x</td><td>Connexi&oacute; a SQL Server</td><td>S&iacute; (instal&middot;lat amb Comandes Venda)</td></tr>
+    <tr><td>unixODBC</td><td>2.3+</td><td>Gestor ODBC a Linux</td><td>S&iacute; (instal&middot;lat amb Comandes Venda)</td></tr>
+    <tr><td>PostgreSQL</td><td>14+</td><td>Base de dades local</td><td>S&iacute; (instal&middot;lat amb Visites / Lab FC)</td></tr>
+    <tr><td><code>libpq-dev</code></td><td>&mdash;</td><td>Capçaleres per a <code>psycopg</code></td><td>S&iacute; (si hi ha Visites)</td></tr>
+    <tr><td>Git</td><td>2.x</td><td>Descarregar el codi</td><td>S&iacute;</td></tr>
+</table>
+
+<h3>Connectivitat de xarxa</h3>
+<ul>
+    <li>Acc&eacute;s al servidor SQL Server <code>vkais</code> (port <strong>50058</strong>)</li>
+    <li>Port 80 (Apache) per servir l'aplicaci&oacute;</li>
+    <li>Port 50004 (intern, Gunicorn &mdash; nom&eacute;s localhost)</li>
+    <li>Port 5432 (PostgreSQL local &mdash; nom&eacute;s localhost)</li>
+    <li>Acc&eacute;s a Internet per descarregar paquets (durant la instal&middot;laci&oacute;)</li>
+</ul>
+
+<!-- 3. ARQUITECTURA -->
+<h2 id="arquitectura">3. Arquitectura de l'aplicaci&oacute;</h2>
+
+<p>L'aplicaci&oacute; segueix el mateix patr&oacute; que les altres apps internes: Apache com a proxy invers davant de Gunicorn, que executa l'aplicaci&oacute; Flask. La nova caracter&iacute;stica respecte les anteriors &eacute;s que combina <strong>les dues fonts de dades</strong>.</p>
+
+<pre><code>Navegador  ───▶  Apache (port 80)  ───▶  Gunicorn (port 50004)
+                                               │
+                          ┌────────────────────┼────────────────────┐
+                          ▼                    ▼                    ▼
+                  PostgreSQL local       SQL Server         /var/www/comandes-venda
+                  agrupaciocarregues   vkais:50058           (motor.py importat
+                  (agrupacions desades)   GWSV_AGRI          per a c&agrave;lcul d'embalatges)
+                                       (nom&eacute;s lectura)</code></pre>
+
+<h3>Estructura de directoris</h3>
+<pre><code>/var/www/agrupacio-carregues/
+  app.py                    # Servidor web Flask (punt d'entrada)
+  agregador.py              # L&ograve;gica d'agrupaci&oacute; per transportista
+  consultes_carregues.py    # Consultes SQL Server (Cargas, ALBLINIA, ARTICLES…)
+  agrupacions_store.py      # CRUD PostgreSQL (agrupacions desades)
+  db.py                     # Pool de connexions a PostgreSQL
+  valida.py                 # Validadors d'entrada (dates, codis…)
+  models_agrupacio.py       # Dataclasses del model
+  migrate_json_to_pg.py     # One-shot migrador d'agrupacions antigues
+  requirements.txt          # Depend&egrave;ncies Python
+  .env                      # Variables de configuraci&oacute; (cal crear manualment)
+  db/
+    schema.sql              # DDL: 3 taules + 1 vista
+    setup_local.sql         # Setup de dev (no s'usa en producci&oacute;)
+  static/                   # CSS, JavaScript
+  templates/                # HTML (Jinja2)
+  venv/                     # Entorn virtual Python</code></pre>
+
+<h3>Comparativa amb les altres apps</h3>
+<table>
+    <tr><th>Aspecte</th><th>Lab FC</th><th>Comandes Venda</th><th>Visites</th><th>Agrupador C&agrave;rregues</th></tr>
+    <tr><td>Directori</td><td><code>/var/www/lab-fc</code></td><td><code>/var/www/comandes-venda</code></td><td><code>/var/www/visites</code></td><td><code>/var/www/agrupacio-carregues</code></td></tr>
+    <tr><td>Servei</td><td><code>lab-fc.service</code></td><td><code>comandes-venda.service</code></td><td><code>visites.service</code></td><td><code>agrupacio-carregues.service</code></td></tr>
+    <tr><td>Port intern</td><td>8000</td><td>5001</td><td>50003</td><td><strong>50004</strong></td></tr>
+    <tr><td>ServerName</td><td><code>labfc.agrienergia.local</code></td><td><code>comandes.agrienergia.local</code></td><td><code>visitesfc.agrienergia.local</code></td><td><code>agrupacions.agrienergia.local</code></td></tr>
+    <tr><td>BD local</td><td>PostgreSQL</td><td>&mdash;</td><td>PostgreSQL</td><td>PostgreSQL</td></tr>
+    <tr><td>BD remota</td><td>&mdash;</td><td>SQL Server</td><td>&mdash;</td><td>SQL Server</td></tr>
+    <tr><td>Usuari SO</td><td>www-data</td><td>www-data</td><td>www-data</td><td>www-data</td></tr>
+</table>
+
+<!-- 4. INSTAL·LACIÓ PAQUETS -->
+<h2 id="instal">4. Instal&middot;laci&oacute; de paquets</h2>
+
+<h3>4.1 Actualitzar el sistema</h3>
+<pre><code>sudo apt update && sudo apt upgrade -y</code></pre>
+
+<h3>4.2 Paquets base</h3>
+<div class="info">
+    Si Lab FC i Comandes Venda ja s&oacute;n al servidor, tots aquests paquets ja estaran instal&middot;lats. Podeu saltar directament a la secci&oacute; 5 (Configurar PostgreSQL).
+</div>
+<pre><code>sudo apt install -y python3 python3-pip python3-venv python3-dev \
+                    git curl gnupg2 apache2 \
+                    postgresql postgresql-contrib libpq-dev \
+                    build-essential</code></pre>
+
+<h3>4.3 Driver ODBC 18 de Microsoft</h3>
+<p>Necessari per a connectar amb SQL Server. <strong>Si Comandes Venda ja est&agrave; desplegada, salta aquesta secci&oacute;</strong> &mdash; el driver ja hi &eacute;s.</p>
+<pre><code># Afegir el repositori de Microsoft
+curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+
+# Per Ubuntu 24.04:
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] \
+  https://packages.microsoft.com/ubuntu/24.04/prod noble main" \
+  | sudo tee /etc/apt/sources.list.d/mssql-release.list
+
+# Instal·lar
+sudo apt update
+sudo ACCEPT_EULA=Y apt install -y msodbcsql18 unixodbc-dev</code></pre>
+
+<h3>4.4 Activar m&ograve;duls d'Apache</h3>
+<pre><code>sudo a2enmod proxy proxy_http headers rewrite expires
+sudo systemctl restart apache2</code></pre>
+
+<h3>4.5 Verificar instal&middot;lacions</h3>
+<pre><code>python3 --version      # 3.10+
+psql --version         # 14+
+apache2 -v             # 2.4+
+git --version          # 2.x+
+odbcinst -q -d         # Ha de mostrar: [ODBC Driver 18 for SQL Server]</code></pre>
+
+<!-- 5. POSTGRES -->
+<h2 id="postgres">5. Configurar PostgreSQL</h2>
+
+<p>L'aplicaci&oacute; utilitza una base de dades pr&ograve;pia anomenada <code>agrupaciocarregues</code> dins del cluster PostgreSQL exist&egrave;nt (el mateix que utilitza Visites o Lab FC). No interfereix amb cap altra base de dades del servidor.</p>
+
+<h3>5.1 Crear la base de dades i l'usuari</h3>
+<pre><code>sudo -u postgres psql &lt;&lt;EOF
+CREATE DATABASE agrupaciocarregues;
+CREATE USER app_agrupacions WITH PASSWORD 'CANVIAR_CONTRASENYA_SEGURA';
+GRANT ALL PRIVILEGES ON DATABASE agrupaciocarregues TO app_agrupacions;
+
+\c agrupaciocarregues
+ALTER DATABASE agrupaciocarregues OWNER TO app_agrupacions;
+ALTER SCHEMA public OWNER TO app_agrupacions;
+GRANT ALL ON SCHEMA public TO app_agrupacions;
+GRANT CREATE ON SCHEMA public TO app_agrupacions;
+EOF</code></pre>
+
+<div class="warning">
+    <strong>IMPORTANT (PostgreSQL 15+):</strong> L'esquema <code>public</code> no &eacute;s escrivible per defecte encara que es tinguin <code>ALL PRIVILEGES</code> sobre la base de dades. Cal canviar-ne el propietari (<code>ALTER SCHEMA public OWNER</code>) i donar <code>CREATE</code>. Si no, la c&agrave;rrega del schema fallar&agrave; amb <code>permission denied for schema public</code>.
+</div>
+
+<div class="danger">
+    <strong>IMPORTANT:</strong> Substitu&iuml;r <code>CANVIAR_CONTRASENYA_SEGURA</code> per una contrasenya real. Evitar car&agrave;cters que trenquen URLs (<code>@</code>, <code>:</code>, <code>/</code>, <code>?</code>, <code>#</code>, espais). Anotar la contrasenya per al <code>.env</code>.
+</div>
+
+<h3>5.2 Verificar acc&eacute;s</h3>
+<pre><code>psql -U app_agrupacions -d agrupaciocarregues -h localhost -c 'SELECT version();'
+# Hauria de mostrar la versi&oacute; de PostgreSQL i sortir sense errors</code></pre>
+
+<p>L'esquema (taules <code>agrupacions</code>, <code>productes_preparats</code>, <code>agrupacio_carregues</code> i vista <code>v_agrupacions_estat</code>) es carrega despr&eacute;s, al pas 6.5, un cop clonat el repositori.</p>
+
+<!-- 6. DESCÀRREGA I CONFIGURACIÓ -->
+<h2 id="descarrega">6. Desc&agrave;rrega i configuraci&oacute; de l'aplicaci&oacute;</h2>
+
+<h3>6.1 Clonar el repositori</h3>
+<pre><code># Crear directori (mateix patr&oacute; que les altres apps)
+sudo mkdir -p /var/www/agrupacio-carregues
+cd /var/www/agrupacio-carregues
+
+# Clonar el repositori
+sudo git clone https://github.com/ohijazo/Agrupador-de-Carregues.git .
+
+# Assignar propietat a www-data
+sudo chown -R www-data:www-data /var/www/agrupacio-carregues</code></pre>
+
+<h3>6.2 Crear el fitxer .env</h3>
+<div class="danger">
+    <strong>IMPORTANT:</strong> El fitxer <code>.env</code> NO est&agrave; al repositori per seguretat. Cal crear-lo manualment amb les credencials de connexi&oacute; a les bases de dades.
+</div>
+<pre><code>sudo -u www-data nano /var/www/agrupacio-carregues/.env</code></pre>
+
+<p>Contingut complet:</p>
+<pre><code># --- SQL Server (ERP, nom&eacute;s lectura) ---
+SQL_SERVER=vkais,50058
+SQL_DATABASE=GWSV_AGRI
+SQL_USER=&lt;usuari_sql&gt;
+SQL_PASSWORD=&lt;contrasenya_sql&gt;
+
+# --- PostgreSQL (persist&egrave;ncia local) ---
+PG_HOST=localhost
+PG_PORT=5432
+PG_DATABASE=agrupaciocarregues
+PG_USER=app_agrupacions
+PG_PASSWORD=&lt;contrasenya_pg_pas_5.1&gt;
+PG_POOL_MIN=1
+PG_POOL_MAX=5
+
+# --- Ruta al motor d'embalatges (app germana Comandes Venda) ---
+PREPARACIO_PATH=/var/www/comandes-venda</code></pre>
+
+<div class="warning">
+    <strong>Port SQL Server:</strong> El servidor SQL utilitza el port <strong>50058</strong> (no el port est&agrave;ndard 1433). &Eacute;s imprescindible incloure el port a <code>SQL_SERVER</code> separat per coma.
+</div>
+
+<div class="warning">
+    <strong>PREPARACIO_PATH:</strong> L'app importa el m&ograve;dul <code>motor.py</code> de Comandes Venda per al c&agrave;lcul d'embalatges. Aquest valor ha d'apuntar al directori d'instal&middot;laci&oacute; de Comandes Venda (<code>/var/www/comandes-venda</code>). Si Comandes Venda no est&agrave; desplegada, l'endpoint <code>/api/agrupar</code> fallar&agrave;.
+</div>
+
+<h3>6.3 Protegir el fitxer .env</h3>
+<pre><code>sudo chmod 640 /var/www/agrupacio-carregues/.env
+sudo chown www-data:www-data /var/www/agrupacio-carregues/.env</code></pre>
+
+<h3>6.4 Variables de configuraci&oacute; (refer&egrave;ncia)</h3>
+<table>
+    <tr><th>Variable</th><th>Valor</th><th>Descripci&oacute;</th></tr>
+    <tr><td><code>SQL_SERVER</code></td><td><code>vkais,50058</code></td><td>Servidor SQL Server amb port</td></tr>
+    <tr><td><code>SQL_DATABASE</code></td><td><code>GWSV_AGRI</code></td><td>Base de dades ERP</td></tr>
+    <tr><td><code>SQL_USER</code></td><td><em>(proporcionat)</em></td><td>Usuari SQL (nom&eacute;s lectura)</td></tr>
+    <tr><td><code>SQL_PASSWORD</code></td><td><em>(proporcionat)</em></td><td>Contrasenya SQL</td></tr>
+    <tr><td><code>PG_HOST</code></td><td><code>localhost</code></td><td>Servidor PostgreSQL local</td></tr>
+    <tr><td><code>PG_PORT</code></td><td><code>5432</code></td><td>Port PostgreSQL</td></tr>
+    <tr><td><code>PG_DATABASE</code></td><td><code>agrupaciocarregues</code></td><td>Base de dades local</td></tr>
+    <tr><td><code>PG_USER</code></td><td><code>app_agrupacions</code></td><td>Usuari PostgreSQL</td></tr>
+    <tr><td><code>PG_PASSWORD</code></td><td><em>(creada al pas 5.1)</em></td><td>Contrasenya PostgreSQL</td></tr>
+    <tr><td><code>PG_POOL_MIN</code></td><td><code>1</code></td><td>Connexions m&iacute;nimes al pool</td></tr>
+    <tr><td><code>PG_POOL_MAX</code></td><td><code>5</code></td><td>Connexions m&agrave;ximes al pool</td></tr>
+    <tr><td><code>PREPARACIO_PATH</code></td><td><code>/var/www/comandes-venda</code></td><td>Ruta a Comandes Venda (motor d'embalatges)</td></tr>
+</table>
+
+<div class="info">
+    <strong>Permisos SQL:</strong> L'usuari SQL nom&eacute;s necessita permisos de <strong>lectura (SELECT)</strong> sobre les taules: <code>Cargas</code>, <code>Detcargas</code>, <code>ALBLINIA</code>, <code>ARTICLES</code>, <code>CPALBARA</code>, <code>SERIEALB</code>, <code>TRANS</code> (i d'altres que ja usa Comandes Venda). Si Comandes Venda ja t&eacute; un usuari SQL configurat, es pot reutilitzar el mateix.
+</div>
+
+<h3>6.5 Crear entorn virtual i instal&middot;lar depend&egrave;ncies</h3>
+<pre><code>cd /var/www/agrupacio-carregues
+sudo -u www-data python3 -m venv venv
+sudo -u www-data venv/bin/pip install --upgrade pip
+sudo -u www-data venv/bin/pip install -r requirements.txt
+sudo -u www-data venv/bin/pip install gunicorn</code></pre>
+
+<h3>6.6 Carregar l'esquema PostgreSQL</h3>
+<pre><code>cd /var/www/agrupacio-carregues
+sudo -u www-data psql -U app_agrupacions -d agrupaciocarregues -h localhost \
+                     -f db/schema.sql
+
+# Hauria de crear: agrupacions, productes_preparats, agrupacio_carregues, v_agrupacions_estat</code></pre>
+
+<h3>6.7 Verificar connexions a les dues BDs</h3>
+<pre><code>cd /var/www/agrupacio-carregues
+
+# 1) Connexi&oacute; a SQL Server
+sudo -u www-data venv/bin/python -c "
+from consultes_carregues import connectar
+conn = connectar()
+conn.execute('SELECT 1').fetchone()
+print('SQL Server OK')
+conn.close()
+"
+
+# 2) Connexi&oacute; a PostgreSQL
+sudo -u www-data venv/bin/python -c "
+import db
+ok, msg = db.health_ok()
+print('PostgreSQL OK' if ok else 'PostgreSQL FAIL: ' + msg)
+"</code></pre>
+
+<div class="warning">
+    <strong>Si falla la connexi&oacute; SQL Server:</strong> Verificar que el port <strong>50058</strong> est&agrave; obert al firewall del servidor Windows on corre SQL Server. Provar amb: <code>telnet vkais 50058</code>.
+</div>
+
+<!-- 7. VERIFICACIÓ MANUAL -->
+<h2 id="verificacio-manual">7. Verificaci&oacute; manual de l'aplicaci&oacute;</h2>
+
+<p>Abans de configurar-la com a servei, conv&eacute; provar que arrenca correctament des de la consola:</p>
+
+<h3>7.1 Arrencar manualment</h3>
+<pre><code>cd /var/www/agrupacio-carregues
+sudo -u www-data venv/bin/python -c "from app import app; app.run(host='127.0.0.1', port=50004)"</code></pre>
+
+<h3>7.2 Provar des d'un altre terminal</h3>
+<pre><code># Health check (cont&eacute; estat de les dues BDs i del motor)
+curl http://localhost:50004/health
+# Hauria de retornar JSON com:
+# {"db": {"ok": true, "msg": ""},
+#  "pg": {"ok": true, "msg": ""},
+#  "motor": {"ok": true, "msg": ""}}
+
+# P&agrave;gina principal
+curl -I http://localhost:50004/
+# Hauria de retornar HTTP/1.1 200 OK
+
+# Aturar el python amb Ctrl+C</code></pre>
+
+<div class="info">
+    Si <code>health</code> retorna <code>motor.ok = false</code>, comprovar que <code>PREPARACIO_PATH</code> apunta a un directori on existeix <code>motor.py</code> i que Comandes Venda est&agrave; ben desplegada.
+</div>
+
+<!-- 8. SERVEI SYSTEMD -->
+<h2 id="servei">8. Servei systemd amb Gunicorn</h2>
+
+<p>Configurem un servei systemd que executa Gunicorn com a servidor WSGI, igual que les altres apps.</p>
+
+<h3>8.1 Crear el fitxer de servei</h3>
+<pre><code>sudo nano /etc/systemd/system/agrupacio-carregues.service</code></pre>
+
+<p>Contingut:</p>
+<pre><code>[Unit]
+Description=Agrupador de Carregues
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/agrupacio-carregues
+EnvironmentFile=/var/www/agrupacio-carregues/.env
+ExecStart=/var/www/agrupacio-carregues/venv/bin/gunicorn \
+    --bind 127.0.0.1:50004 \
+    --workers 2 \
+    --timeout 120 \
+    --access-logfile /var/www/agrupacio-carregues/access.log \
+    --error-logfile /var/www/agrupacio-carregues/error.log \
+    app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+
+<div class="info">
+    <strong>Nota:</strong> Gunicorn escolta a <code>127.0.0.1:50004</code> (nom&eacute;s localhost). L'acc&eacute;s extern es fa a trav&eacute;s d'Apache.
+</div>
+
+<h3>8.2 Activar i iniciar el servei</h3>
+<pre><code>sudo systemctl daemon-reload
+sudo systemctl enable agrupacio-carregues
+sudo systemctl start agrupacio-carregues
+sudo systemctl status agrupacio-carregues
+# Hauria de dir: active (running)</code></pre>
+
+<h3>8.3 Comandes &uacute;tils del servei</h3>
+<table>
+    <tr><th>Comanda</th><th>Acci&oacute;</th></tr>
+    <tr><td><code>sudo systemctl start agrupacio-carregues</code></td><td>Iniciar</td></tr>
+    <tr><td><code>sudo systemctl stop agrupacio-carregues</code></td><td>Aturar</td></tr>
+    <tr><td><code>sudo systemctl restart agrupacio-carregues</code></td><td>Reiniciar</td></tr>
+    <tr><td><code>sudo systemctl status agrupacio-carregues</code></td><td>Veure estat</td></tr>
+    <tr><td><code>journalctl -u agrupacio-carregues -f</code></td><td>Veure logs en temps real</td></tr>
+</table>
+
+<!-- 9. APACHE -->
+<h2 id="apache">9. Apache VirtualHost (proxy invers)</h2>
+
+<h3>9.1 Crear el VirtualHost</h3>
+<pre><code>sudo nano /etc/apache2/sites-available/agrupacio-carregues.conf</code></pre>
+
+<p>Contingut:</p>
+<pre><code>&lt;VirtualHost *:80&gt;
+    ServerName agrupacions.agrienergia.local
+
+    # IMPORTANT: Permetre barres codificades (%2F) a les URLs
+    # L'aplicaci&oacute; usa URLs com /api/agrupacions/&lt;id&gt;/producte
+    # i carrega_id en format 2026/01/0002266
+    AllowEncodedSlashes NoDecode
+
+    # Headers de seguretat
+    Header always set X-Frame-Options "DENY"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin"
+
+    ProxyPreserveHost On
+    ProxyPass        /static/ !
+    ProxyPass        / http://127.0.0.1:50004/ nocanon
+    ProxyPassReverse / http://127.0.0.1:50004/
+
+    # Servir fitxers est&agrave;tics directament
+    Alias /static/ /var/www/agrupacio-carregues/static/
+    &lt;Directory /var/www/agrupacio-carregues/static/&gt;
+        Require all granted
+        Options -Indexes
+        ExpiresActive On
+        ExpiresDefault "access plus 7 days"
+    &lt;/Directory&gt;
+
+    ErrorLog ${APACHE_LOG_DIR}/agrupacio-carregues-error.log
+    CustomLog ${APACHE_LOG_DIR}/agrupacio-carregues-access.log combined
+&lt;/VirtualHost&gt;</code></pre>
+
+<div class="danger">
+    <strong>CR&Iacute;TIC:</strong> Les directives <code>AllowEncodedSlashes NoDecode</code> i <code>nocanon</code> s&oacute;n <strong>imprescindibles</strong>. Sense elles, Apache rebutja amb error 404 les peticions que cont&eacute; <code>carrega_id</code> amb barres (format <code>EJE/SCA/CAR</code>, p. ex. <code>2026/01/0002266</code>).
+</div>
+
+<h3>9.2 Activar el site i recarregar</h3>
+<pre><code>sudo a2ensite agrupacio-carregues.conf
+sudo apache2ctl configtest
+# Hauria de dir: Syntax OK
+sudo systemctl reload apache2</code></pre>
+
+<!-- 10. XARXA -->
+<h2 id="xarxa">10. Xarxa, DNS i tallafocs</h2>
+
+<h3>10.1 Tallafocs (UFW)</h3>
+<p>Si UFW est&agrave; actiu, verificar que els ports necessaris s&oacute;n oberts. Cap port nou per a aquesta app respecte les altres.</p>
+<pre><code>sudo ufw status
+sudo ufw allow 'Apache'   # Probablement ja obert per Lab FC
+sudo ufw allow OpenSSH    # Si no est&agrave; obert</code></pre>
+
+<div class="info">
+    <strong>No cal obrir el port 50004</strong> al tallafocs &mdash; Gunicorn escolta nom&eacute;s a 127.0.0.1 i nom&eacute;s Apache hi accedeix internament.
+</div>
+<div class="warning">
+    <strong>S&iacute; cal:</strong> Assegurar que el port <strong>50058</strong> est&agrave; obert al tallafocs del servidor Windows on corre SQL Server, per permetre connexions des del servidor Linux.
+</div>
+
+<h3>10.2 DNS intern</h3>
+<p>Crear entrada al servidor DNS corporatiu perqu&egrave; els clients puguin accedir per nom:</p>
+<pre><code>Tipus: A
+Nom:   agrupacions.agrienergia.local
+Valor: &lt;IP-DEL-SERVIDOR&gt;     # mateix que les altres apps</code></pre>
+
+<!-- 11. BACKUP -->
+<h2 id="backup">11. C&ograve;pia de seguretat (PostgreSQL)</h2>
+
+<p>Les agrupacions desades viuen a la BD local <code>agrupaciocarregues</code>. Recomanem un backup diari amb retenci&oacute; de 30 dies, igual que la resta d'apps amb PostgreSQL:</p>
+
+<pre><code>sudo mkdir -p /opt/backups/agrupacio-carregues
+sudo chown postgres:postgres /opt/backups/agrupacio-carregues
+
+sudo nano /etc/cron.d/agrupacio-carregues-backup</code></pre>
+
+<p>Contingut (els <code>\%</code> s&oacute;n necessaris perqu&egrave; cron interpreta <code>%</code> com a salts de l&iacute;nia):</p>
+<pre><code>BACKUP_DIR=/opt/backups/agrupacio-carregues
+
+# Backup diari a les 02:30
+30 2 * * * postgres pg_dump agrupaciocarregues | \
+    gzip &gt; $BACKUP_DIR/agrupaciocarregues_$(date +\%Y\%m\%d).sql.gz
+
+# Eliminar backups &gt; 30 dies (a les 03:30)
+30 3 * * * root find $BACKUP_DIR -name "*.sql.gz" -mtime +30 -delete</code></pre>
+
+<div class="info">
+    La BD de SQL Server (ERP) no la gestiona aquesta app &mdash; el seu backup &eacute;s responsabilitat de l'equip de SQL Server / ERP, no d'aquest desplegament.
+</div>
+
+<!-- 12. VERIFICACIÓ -->
+<h2 id="verificacio">12. Llista de verificaci&oacute;</h2>
+
+<p>Executar totes les comprovacions abans de donar per finalitzat el desplegament:</p>
+<table>
+    <tr><th>#</th><th>Verificaci&oacute;</th><th>Comanda</th><th>Resultat esperat</th></tr>
+    <tr><td>1</td><td>Driver ODBC instal&middot;lat</td><td><code>odbcinst -q -d</code></td><td><code>[ODBC Driver 18 for SQL Server]</code></td></tr>
+    <tr><td>2</td><td>PostgreSQL actiu</td><td><code>systemctl is-active postgresql</code></td><td><code>active</code></td></tr>
+    <tr><td>3</td><td>Acc&eacute;s a la BD local</td><td><code>psql -U app_agrupacions -d agrupaciocarregues -h localhost -c 'SELECT 1'</code></td><td><code>1</code></td></tr>
+    <tr><td>4</td><td>Repositori clonat</td><td><code>ls /var/www/agrupacio-carregues/app.py</code></td><td>Fitxer existent</td></tr>
+    <tr><td>5</td><td>Fitxer .env creat</td><td><code>sudo cat /var/www/agrupacio-carregues/.env</code></td><td>Variables PG_*, SQL_*, PREPARACIO_PATH</td></tr>
+    <tr><td>6</td><td>Entorn virtual creat</td><td><code>ls /var/www/agrupacio-carregues/venv/bin/python</code></td><td>Fitxer existent</td></tr>
+    <tr><td>7</td><td>Schema PG carregat</td><td><code>psql -U app_agrupacions -d agrupaciocarregues -c '\dt'</code></td><td>Llista de 3 taules</td></tr>
+    <tr><td>8</td><td>Servei actiu</td><td><code>systemctl status agrupacio-carregues</code></td><td><code>active (running)</code></td></tr>
+    <tr><td>9</td><td>Port 50004 escoltant</td><td><code>ss -tlnp | grep 50004</code></td><td><code>LISTEN 127.0.0.1:50004</code></td></tr>
+    <tr><td>10</td><td>Health check OK</td><td><code>curl http://localhost:50004/health</code></td><td>JSON amb <code>db</code>, <code>pg</code>, <code>motor</code> tots <code>ok:true</code></td></tr>
+    <tr><td>11</td><td>Apache respon</td><td><code>curl -I http://localhost/</code></td><td><code>200 OK</code> (HTML de l'app)</td></tr>
+    <tr><td>12</td><td>P&agrave;gina principal carrega</td><td>Obrir <code>http://agrupacions.agrienergia.local</code></td><td>Llistat de c&agrave;rregues visible</td></tr>
+    <tr><td>13</td><td>Calendari funciona</td><td>Obrir <code>http://agrupacions.agrienergia.local/calendari</code></td><td>Calendari mensual visible</td></tr>
+    <tr><td>14</td><td>Agrupaci&oacute; (motor) funciona</td><td>Seleccionar c&agrave;rregues i clicar "Agrupar"</td><td>Resultat amb embalatges</td></tr>
+</table>
+
+<h3>Verificaci&oacute; r&agrave;pida des del terminal</h3>
+<pre><code># 1. Servei actiu?
+systemctl is-active agrupacio-carregues
+
+# 2. Port obert?
+ss -tlnp | grep 50004
+
+# 3. Resposta HTTP?
+curl -s -o /dev/null -w '%{http_code}' http://localhost:50004/
+# Ha de retornar: 200
+
+# 4. Health check?
+curl -s http://localhost:50004/health | python3 -m json.tool
+# Ha de retornar JSON amb db, pg i motor tots ok:true
+
+# 5. SQL Server accessible?
+telnet vkais 50058
+# Ha de connectar (no "Connection refused")</code></pre>
+
+<!-- 13. MANTENIMENT -->
+<h2 id="manteniment">13. Manteniment i actualitzacions</h2>
+
+<h3>13.1 Actualitzar l'aplicaci&oacute;</h3>
+<p>Quan hi hagi una nova versi&oacute; al repositori GitHub:</p>
+<pre><code>cd /var/www/agrupacio-carregues
+
+# 1. Descarregar canvis
+sudo -u www-data git pull origin main
+
+# 2. Actualitzar depend&egrave;ncies (si requirements.txt ha canviat)
+sudo -u www-data venv/bin/pip install -r requirements.txt
+
+# 3. Aplicar canvis al schema (si db/schema.sql ha canviat)
+#    El schema &eacute;s idempotent (CREATE IF NOT EXISTS), s'hi pot tornar a passar.
+sudo -u www-data psql -U app_agrupacions -d agrupaciocarregues -h localhost \
+                     -f db/schema.sql
+
+# 4. Reiniciar el servei
+sudo systemctl restart agrupacio-carregues
+
+# 5. Verificar
+sudo systemctl status agrupacio-carregues
+curl http://localhost:50004/health</code></pre>
+
+<div class="info">
+    El fitxer <code>.env</code> no es veu afectat per les actualitzacions (no est&agrave; al repositori).
+</div>
+
+<h3>13.2 Rotaci&oacute; de logs</h3>
+<pre><code>sudo nano /etc/logrotate.d/agrupacio-carregues</code></pre>
+<p>Contingut:</p>
+<pre><code>/var/www/agrupacio-carregues/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    copytruncate
+}</code></pre>
+
+<!-- 14. LOGS -->
+<h2 id="logs">14. Logs i monitoratge</h2>
+
+<table>
+    <tr><th>Fitxer / Comanda</th><th>Contingut</th></tr>
+    <tr><td><code>/var/www/agrupacio-carregues/agrupacio.log</code></td><td>Log de l'app (resultats, errors d'agrupaci&oacute;)</td></tr>
+    <tr><td><code>/var/www/agrupacio-carregues/access.log</code></td><td>Log d'acc&eacute;s HTTP (Gunicorn)</td></tr>
+    <tr><td><code>/var/www/agrupacio-carregues/error.log</code></td><td>Errors del servidor web (Gunicorn)</td></tr>
+    <tr><td><code>/var/log/apache2/agrupacio-carregues-*.log</code></td><td>Logs d'Apache</td></tr>
+    <tr><td><code>journalctl -u agrupacio-carregues</code></td><td>Logs del servei systemd</td></tr>
+    <tr><td><code>/var/log/postgresql/</code></td><td>Logs de PostgreSQL</td></tr>
+</table>
+
+<pre><code># Logs de l'app en temps real
+tail -f /var/www/agrupacio-carregues/agrupacio.log
+
+# Logs del servei
+journalctl -u agrupacio-carregues -f --no-pager
+
+# Logs d'Apache
+tail -f /var/log/apache2/agrupacio-carregues-error.log</code></pre>
+
+<!-- 15. TROUBLESHOOTING -->
+<h2 id="troubleshooting">15. Resoluci&oacute; de problemes</h2>
+
+<table>
+    <tr><th>Problema</th><th>Causa probable</th><th>Soluci&oacute;</th></tr>
+    <tr><td>El servei no arrenca</td><td>Depend&egrave;ncies o <code>.env</code> absent</td><td><code>journalctl -u agrupacio-carregues -n 50</code></td></tr>
+    <tr><td><code>permission denied for schema public</code></td><td>PostgreSQL 15+ amb permisos de <code>public</code> per defecte</td><td>Repetir <code>ALTER SCHEMA public OWNER TO app_agrupacions; GRANT CREATE ON SCHEMA public TO app_agrupacions;</code></td></tr>
+    <tr><td><code>Can't open lib ODBC 18</code></td><td>Driver no instal&middot;lat</td><td>Repetir pas 4.3</td></tr>
+    <tr><td><code>Login timeout expired</code></td><td>Port SQL bloquejat pel firewall</td><td><code>telnet vkais 50058</code> &mdash; obrir port al firewall de Windows</td></tr>
+    <tr><td><code>Login failed for user</code></td><td>Credencials SQL incorrectes</td><td>Revisar <code>.env</code> (contactar responsable)</td></tr>
+    <tr><td><code>health.motor.ok = false</code></td><td><code>PREPARACIO_PATH</code> incorrecte o Comandes Venda no desplegada</td><td>Verificar que <code>/var/www/comandes-venda/motor.py</code> existeix</td></tr>
+    <tr><td><code>health.pg.ok = false</code></td><td>Postgres no arrenca o credencials/host malament</td><td><code>systemctl status postgresql</code> i revisar <code>PG_*</code> al <code>.env</code></td></tr>
+    <tr><td>Error 404 al fer clic a una agrupaci&oacute;</td><td>Apache rebutja barres codificades</td><td>Afegir <code>AllowEncodedSlashes NoDecode</code> i <code>nocanon</code> (pas 9.1)</td></tr>
+    <tr><td>Error 502 Bad Gateway</td><td>Gunicorn no respon</td><td><code>sudo systemctl restart agrupacio-carregues</code></td></tr>
+    <tr><td>P&agrave;gina no accessible</td><td>DNS o Apache</td><td><code>curl http://localhost:50004/</code> + revisar entrada DNS</td></tr>
+    <tr><td>Calendari sense esdeveniments</td><td>Connexi&oacute; a SQL Server caiguda</td><td>Mirar <code>health.db.msg</code> i fer <code>telnet vkais 50058</code></td></tr>
+</table>
+
+<!-- 16. RESUM -->
+<h2 id="resum">16. Resum i temps estimats</h2>
+
+<p>Temps estimats assumint que Lab FC, Comandes Venda i Visites ja s&oacute;n al servidor (Python, Apache, ODBC 18, PostgreSQL, UFW ja configurats):</p>
+
+<table>
+    <tr><th>Pas</th><th>Descripci&oacute;</th><th>Temps estimat</th></tr>
+    <tr><td>4</td><td>Verificar paquets base (cap nou)</td><td>2 min</td></tr>
+    <tr><td>5</td><td>Crear BD i usuari PostgreSQL</td><td>5 min</td></tr>
+    <tr><td>6</td><td>Clonar repo, crear <code>.env</code> i entorn virtual</td><td>10 min</td></tr>
+    <tr><td>6.6-6.7</td><td>Carregar schema i verificar connexions</td><td>5 min</td></tr>
+    <tr><td>7</td><td>Verificaci&oacute; manual de l'app</td><td>5 min</td></tr>
+    <tr><td>8</td><td>Servei systemd</td><td>5 min</td></tr>
+    <tr><td>9</td><td>Apache VirtualHost</td><td>5 min</td></tr>
+    <tr><td>10</td><td>DNS (entrada nova)</td><td>5 min</td></tr>
+    <tr><td>11</td><td>Backup PostgreSQL</td><td>5 min</td></tr>
+    <tr><td>12</td><td>Verificaci&oacute; final</td><td>5 min</td></tr>
+    <tr><td></td><td><strong>TOTAL ESTIMAT</strong></td><td><strong>50-60 min</strong></td></tr>
+</table>
+
+<div class="info">
+    Si Comandes Venda <strong>encara no</strong> est&agrave; desplegada al servidor, cal fer-ho primer (afegeix uns 30-40 min addicionals i instal&middot;la el driver ODBC 18 i les depend&egrave;ncies SQL Server).
+</div>
+
+<h3>Comparativa de serveis al servidor (un cop desplegat)</h3>
+<table>
+    <tr><th></th><th>Lab FC</th><th>Comandes Venda</th><th>Visites</th><th>Agrupador C&agrave;rregues</th></tr>
+    <tr><td>Directori</td><td><code>/var/www/lab-fc</code></td><td><code>/var/www/comandes-venda</code></td><td><code>/var/www/visites</code></td><td><code>/var/www/agrupacio-carregues</code></td></tr>
+    <tr><td>Servei</td><td><code>lab-fc.service</code></td><td><code>comandes-venda.service</code></td><td><code>visites.service</code></td><td><code>agrupacio-carregues.service</code></td></tr>
+    <tr><td>Port intern</td><td>8000</td><td>5001</td><td>50003</td><td><strong>50004</strong></td></tr>
+    <tr><td>ServerName</td><td><code>labfc.agrienergia.local</code></td><td><code>comandes.agrienergia.local</code></td><td><code>visitesfc.agrienergia.local</code></td><td><code>agrupacions.agrienergia.local</code></td></tr>
+    <tr><td>BD local</td><td>PostgreSQL</td><td>&mdash;</td><td>PostgreSQL</td><td>PostgreSQL <code>agrupaciocarregues</code></td></tr>
+    <tr><td>BD remota</td><td>&mdash;</td><td>SQL Server (port 50058)</td><td>&mdash;</td><td>SQL Server (port 50058)</td></tr>
+    <tr><td>Usuari SO</td><td>www-data</td><td>www-data</td><td>www-data</td><td>www-data</td></tr>
+</table>
+
+<div class="footer">
+    Agrupador de C&agrave;rregues &mdash; Guia de Desplegament v1.0 &mdash; Juny 2026
+</div>
+
+</body>
+</html>

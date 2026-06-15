@@ -2102,14 +2102,14 @@ async function comprovaVersionAgrupacions() {
         if (state.agrupacionsVersion === null) {
             // Primer poll: només memoritzem el valor inicial
             state.agrupacionsVersion = v;
-            console.debug("[poll] versió inicial:", v);
+            console.log("[poll] versió inicial:", v);
             return;
         }
         if (v !== state.agrupacionsVersion) {
-            console.debug("[poll] canvi detectat:", state.agrupacionsVersion, "→", v, "— refrescant llista");
+            console.log("[poll] canvi detectat:", state.agrupacionsVersion, "→", v, "— refrescant llista");
             state.agrupacionsVersion = v;
             await refrescarLlistaSilenciosament();
-            console.debug("[poll] refresc completat");
+            console.log("[poll] refresc completat");
         }
     } catch { /* silent — el polling reintenta al següent tick */ }
 }

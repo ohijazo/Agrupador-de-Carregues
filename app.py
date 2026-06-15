@@ -403,6 +403,110 @@ def api_agrupar():
         return _err_genèric()
 
 
+@app.route("/api/pbi/carregues")
+def api_pbi_carregues():
+    """Endpoint per a Power BI: una fila per càrrega, JSON pla, amb camps
+    derivats (any/mes/setmana/dia) per facilitar el modelat.
+
+    Autenticació: header `X-Api-Key` ha de coincidir amb la variable d'entorn
+    `PBI_API_KEY`. Si no està configurada, l'endpoint retorna 503.
+
+    Rang: ?desde=YYYY-MM-DD&fins=YYYY-MM-DD (per defecte: -90 dies a +60 dies).
+    """
+    api_key_esperada = os.environ.get("PBI_API_KEY", "").strip()
+    if not api_key_esperada:
+        return jsonify({"error": "PBI_API_KEY no configurada al .env"}), 503
+    if request.headers.get("X-Api-Key", "") != api_key_esperada:
+        return jsonify({"error": "API key invàlida o absent"}), 401
+
+    avui = date.today()
+    desde_raw = request.args.get("desde") or (avui - timedelta(days=90)).isoformat()
+    fins_raw = request.args.get("fins") or (avui + timedelta(days=60)).isoformat()
+    rang, err = valida_rang_dates(desde_raw, fins_raw)
+    if err:
+        return _err_validacio(err)
+    desde_d, fins_d = rang
+
+    # Paginació interna: llistar_carregues té un cap de 1000 per request,
+    # però per a Power BI hem de retornar tot el rang sencer.
+    items = []
+    offset = 0
+    PAS = 1000
+    try:
+        while True:
+            resp = llistar_carregues(
+                desde_d.isoformat(), fins_d.isoformat(),
+                limit=PAS, offset=offset,
+            )
+            batch = resp.get("items", [])
+            items.extend(batch)
+            total = resp.get("total", 0)
+            offset += PAS
+            if offset >= total or not batch:
+                break
+    except pyodbc.Error:
+        log.exception("DB error a pbi/carregues")
+        return _err_db()
+    except Exception:
+        log.exception("pbi/carregues")
+        return _err_genèric()
+
+    DIES = ["Dilluns", "Dimarts", "Dimecres", "Dijous", "Divendres", "Dissabte", "Diumenge"]
+    MESOS = ["Gener", "Febrer", "Març", "Abril", "Maig", "Juny",
+             "Juliol", "Agost", "Setembre", "Octubre", "Novembre", "Desembre"]
+
+    files = []
+    for c in items:
+        data_str = c.get("car_fecsalida") or c.get("car_fecha") or ""
+        any_, mes, dia, setmana, dia_setmana_txt, mes_txt, any_mes, any_setmana = (
+            None, None, None, None, "", "", "", ""
+        )
+        if data_str:
+            try:
+                yy, mm, dd = (int(x) for x in data_str.split("-"))
+                from datetime import date as _date
+                d = _date(yy, mm, dd)
+                any_, mes, dia = yy, mm, dd
+                iso_year, iso_week, iso_dow = d.isocalendar()
+                setmana = iso_week
+                dia_setmana_txt = DIES[iso_dow - 1]
+                mes_txt = MESOS[mm - 1]
+                any_mes = f"{yy:04d}-{mm:02d}"
+                any_setmana = f"{iso_year:04d}-W{iso_week:02d}"
+            except (ValueError, TypeError):
+                pass
+        files.append({
+            "carrega_id": c.get("carrega_id"),
+            "eje_ejercicio": c.get("eje_ejercicio"),
+            "sca_serie": c.get("sca_serie"),
+            "car_numero": c.get("car_numero"),
+            "descripcio": c.get("car_descripcion") or "",
+            "data_sortida": c.get("car_fecsalida"),
+            "data_carrega": c.get("car_fecha"),
+            "estat": c.get("car_estat"),
+            "transportista_codi": c.get("tra_codi") or "",
+            "transportista_nom": c.get("transportista") or "",
+            "matricula": c.get("car_matricula") or "",
+            "conductor": c.get("car_nomconductor") or "",
+            "pes_net_real": c.get("car_pesonetocarga") or 0.0,
+            "pes_teoric": c.get("car_pesoteorico") or 0.0,
+            "kg_total": c.get("kg_total") or 0.0,
+            "is_granel": bool(c.get("is_granel")),
+            "palletitzable": bool(c.get("palletitzable")),
+            "observacions": c.get("car_observaciones") or "",
+            # Camps derivats per a Power BI
+            "any": any_,
+            "mes": mes,
+            "dia": dia,
+            "setmana": setmana,
+            "any_mes": any_mes,
+            "any_setmana": any_setmana,
+            "dia_setmana": dia_setmana_txt,
+            "mes_text": mes_txt,
+        })
+    return jsonify(files)
+
+
 @app.route("/health")
 def health():
     ok_db = ok_motor = ok_pg = False

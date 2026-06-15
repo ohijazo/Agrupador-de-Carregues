@@ -2102,11 +2102,14 @@ async function comprovaVersionAgrupacions() {
         if (state.agrupacionsVersion === null) {
             // Primer poll: només memoritzem el valor inicial
             state.agrupacionsVersion = v;
+            console.debug("[poll] versió inicial:", v);
             return;
         }
         if (v !== state.agrupacionsVersion) {
+            console.debug("[poll] canvi detectat:", state.agrupacionsVersion, "→", v, "— refrescant llista");
             state.agrupacionsVersion = v;
             await refrescarLlistaSilenciosament();
+            console.debug("[poll] refresc completat");
         }
     } catch { /* silent — el polling reintenta al següent tick */ }
 }
@@ -2163,6 +2166,11 @@ function iniciaPollingAgrupacions() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    // Polling de canvis a les agrupacions: el cridem al principi per
+    // assegurar que arrenca encara que alguna inicialització posterior
+    // llanci una excepció.
+    try { iniciaPollingAgrupacions(); } catch (e) { console.error("Polling init error:", e); }
+
     const prefs = carregarPrefs();
     if (prefs.desde) $("#desde").value = prefs.desde;
     if (prefs.fins) $("#fins").value = prefs.fins;
@@ -2343,9 +2351,10 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => buscarCarregues(), 100);
     }
 
-    // Polling de canvis a les agrupacions (refresc automàtic quan algú
-    // marca un producte com a preparat al magatzem).
-    iniciaPollingAgrupacions();
+    // Eines de depuració en localhost (no exposem a producció)
+    if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+        window.__app = { state, comprovaVersionAgrupacions, refrescarLlistaSilenciosament };
+    }
 });
 
 })();

@@ -989,6 +989,7 @@ body.is-resizing-col * { cursor: col-resize !important; }
 
 .row-detall { background: var(--gray-50); }
 .row-detall td { padding: .75rem 1.25rem; }
+.row-detall[hidden] { display: none !important; }
 
 .loading-inline {
     display: inline-flex;

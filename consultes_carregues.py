@@ -99,6 +99,42 @@ def llistar_carregues(
               AND  RTRIM(a.art_descunit) NOT IN ('UNI', 'GRA')
         )
     """
+    # IMPORTANT: per a cada det_documento resolem una sola `sal` real (via
+    # CPALBARA, amb fallback a SERIEALB) ABANS de fer JOIN amb ALBLINIA.
+    # Si juntem "sal directe OR sal via SERIEALB" directament al JOIN amb
+    # ALBLINIA, podem caçar un albarà DIFERENT que té el mateix número però
+    # a una altra sèrie i amb articles GRA — falsos positius.
+    exists_granel_sql = """
+        EXISTS (
+            SELECT 1
+            FROM   Detcargas d  WITH (NOLOCK)
+            CROSS APPLY (
+                SELECT TOP 1 cp.sal_codigo
+                FROM   CPALBARA cp WITH (NOLOCK)
+                WHERE  cp.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
+                  AND  cp.cpa_albara    = SUBSTRING(d.det_documento, 7, 7)
+                  AND  ( cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2)
+                         OR EXISTS (
+                             SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                             WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                               AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                               AND  s.sal_codigo       = cp.sal_codigo
+                         ) )
+                ORDER BY CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
+            ) sal_resolt
+            JOIN   ALBLINIA  l   WITH (NOLOCK)
+              ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
+              AND l.sal_codigo    = sal_resolt.sal_codigo
+              AND l.cpa_albara    = SUBSTRING(d.det_documento, 7, 7)
+            JOIN   ARTICLES  a   WITH (NOLOCK) ON a.art_codi = l.art_codi
+            WHERE  d.eje_ejercicio = c.eje_ejercicio
+              AND  d.sca_serie     = c.sca_serie
+              AND  d.car_numero    = c.car_numero
+              AND  d.det_tipo      IN ('A', 'P')
+              AND  RTRIM(a.art_descunit) = 'GRA'
+              AND  l.lin_quan      > 0
+        )
+    """
     where_sql = """
         WHERE  COALESCE(c.car_fecsalida, c.car_fecha) >= ?
           AND  COALESCE(c.car_fecsalida, c.car_fecha) <  ?
@@ -195,6 +231,7 @@ def llistar_carregues(
                c.car_pesoteorico,
                CAST(c.car_observaciones AS varchar(500)) AS car_observaciones,
                CAST(CASE WHEN """ + exists_palletizable_sql + """ THEN 1 ELSE 0 END AS BIT) AS palletitzable,
+               CAST(CASE WHEN """ + exists_granel_sql + """ THEN 1 ELSE 0 END AS BIT) AS is_granel,
                """ + kg_total_sql + """ AS kg_total
         FROM   Cargas c WITH (NOLOCK)
         LEFT JOIN TRANS t WITH (NOLOCK) ON t.tra_codi = c.tra_codi
@@ -229,6 +266,7 @@ def llistar_carregues(
             "car_pesoteorico": float(r.car_pesoteorico) if r.car_pesoteorico is not None else 0.0,
             "car_observaciones": (r.car_observaciones or "").strip(),
             "palletitzable": bool(r.palletitzable),
+            "is_granel": bool(r.is_granel),
             "kg_total": float(r.kg_total) if r.kg_total is not None else 0.0,
         }
         for r in rows

@@ -65,7 +65,24 @@
     // ---------------------------------------------------------------
     // Estat
     // ---------------------------------------------------------------
-    const DIES_CURT = ["Dl", "Dt", "Dc", "Dj", "Dv"];
+    const DIES_CURT = ["Dl", "Dt", "Dc", "Dj", "Dv", "Ds", "Dg"];
+
+    // Paleta de colors per transportista (10 colors distints + gris "altres").
+    // Triats per ser distingibles entre ells i no xocar amb el blau primari
+    // (carregues saca) ni el teal (granel).
+    const TRA_PALETTE = [
+        "#6366f1", // indigo
+        "#a855f7", // purple
+        "#ec4899", // pink
+        "#f59e0b", // amber
+        "#10b981", // emerald
+        "#06b6d4", // cyan
+        "#65a30d", // lime
+        "#f97316", // orange
+        "#dc2626", // red
+        "#0ea5e9", // sky
+    ];
+    const TRA_COLOR_ALTRES = "#94a3b8"; // slate-400
 
     const state = {
         any_: 0,
@@ -78,7 +95,12 @@
         capSetmana: [],        // càrregues DS/DG dins el mes actual (filtrades)
         totalsCount: 0,
         totalsKg: 0,
+        totalsSetmana: 0,      // càrregues a la setmana actual (dins del mes vist)
+        totalsGranel: 0,       // càrregues amb is_granel (dins del mes vist)
         cercaText: "",
+        filtreTra: "",         // tra_codi actiu o "" si cap filtre
+        traMap: new Map(),     // tra_codi -> { color, nom, n }
+        traOrdre: [],          // tra_codi en l'ordre del top usats
         abortCtrl: null,
         modalAbort: null,
         scrollPendent: true,   // primer render: scrolla a la setmana actual
@@ -104,6 +126,7 @@
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
             agruparPerDia(data.items || []);
+            renderLegenda();
             renderGrid();
             renderCapSetmana();
             renderStats();
@@ -141,12 +164,56 @@
             }
         }
         for (const arr of perDia.values()) {
-            arr.sort((a, b) => (a.car_descripcion || "").localeCompare(b.car_descripcion || "", "ca"));
+            arr.sort((a, b) => {
+                const ga = a.is_granel ? 0 : 1;
+                const gb = b.is_granel ? 0 : 1;
+                if (ga !== gb) return ga - gb;
+                return (a.car_descripcion || "").localeCompare(b.car_descripcion || "", "ca");
+            });
         }
-        capSetmana.sort((a, b) => a.data.localeCompare(b.data));
+        capSetmana.sort((a, b) => {
+            if (a.data !== b.data) return a.data.localeCompare(b.data);
+            const ga = a.c.is_granel ? 0 : 1;
+            const gb = b.c.is_granel ? 0 : 1;
+            return ga - gb;
+        });
         state.carreguesPerDiaTotes = perDia;
         state.capSetmanaTotes = capSetmana;
+        construirMapaTransportistes(items);
         aplicarFiltreText();
+    }
+
+    function construirMapaTransportistes(items) {
+        // Comptem freqüència per tra_codi. El top 10 reben colors de la paleta;
+        // la resta agafen el color "altres" gris.
+        const cont = new Map();
+        for (const c of items) {
+            const codi = (c.tra_codi || "").trim();
+            if (!codi) continue;
+            const e = cont.get(codi) || { codi, nom: (c.transportista || "").trim() || codi, n: 0 };
+            e.n++;
+            if (!e.nom) e.nom = (c.transportista || "").trim() || codi;
+            cont.set(codi, e);
+        }
+        // Ordena per freqüència descendent, després alfabèticament
+        const ordenats = Array.from(cont.values()).sort((a, b) =>
+            b.n - a.n || a.codi.localeCompare(b.codi)
+        );
+        const traMap = new Map();
+        const traOrdre = [];
+        for (let i = 0; i < ordenats.length; i++) {
+            const e = ordenats[i];
+            const color = i < TRA_PALETTE.length ? TRA_PALETTE[i] : TRA_COLOR_ALTRES;
+            traMap.set(e.codi, { color, nom: e.nom, n: e.n });
+            traOrdre.push(e.codi);
+        }
+        state.traMap = traMap;
+        state.traOrdre = traOrdre;
+    }
+
+    function colorPerTra(traCodi) {
+        const e = state.traMap.get((traCodi || "").trim());
+        return e ? e.color : "";
     }
 
     function carregaCoincideix(c, q) {
@@ -161,33 +228,46 @@
 
     function aplicarFiltreText() {
         const q = state.cercaText.trim();
+        const traF = state.filtreTra || "";
+        const matchTra = (c) => !traF || (c.tra_codi || "") === traF;
+        // Setmana actual (dilluns ISO) per al KPI "aquesta setmana"
+        const dillunsAvuiIso = isoLocal(dilluns(new Date()));
         // Filtra Dl-Dv
         const perDia = new Map();
-        let nMes = 0, kgMes = 0;
+        let nMes = 0, kgMes = 0, nSetmana = 0, nGranel = 0;
         for (const [key, arr] of state.carreguesPerDiaTotes) {
-            const filtrats = q ? arr.filter(c => carregaCoincideix(c, q)) : arr.slice();
+            const filtrats = arr.filter(c => matchTra(c) && (!q || carregaCoincideix(c, q)));
             if (filtrats.length > 0) perDia.set(key, filtrats);
             // Stats: només dies del mes actual
-            const [yy, mm] = key.split("-").map(Number);
+            const [yy, mm, dd] = key.split("-").map(Number);
             if (yy === state.any_ && mm === state.mes) {
+                const dillunsKey = isoLocal(dilluns(new Date(yy, mm - 1, dd)));
                 for (const c of filtrats) {
                     nMes++;
                     kgMes += kgDeCarrega(c);
+                    if (c.is_granel) nGranel++;
+                    if (dillunsKey === dillunsAvuiIso) nSetmana++;
                 }
             }
         }
-        // Filtra DS/DG
-        const capSetmana = q
-            ? state.capSetmanaTotes.filter(x => carregaCoincideix(x.c, q))
-            : state.capSetmanaTotes.slice();
+        // Filtra DS/DG (capSetmana — events del mes actual)
+        const capSetmana = state.capSetmanaTotes.filter(x =>
+            matchTra(x.c) && (!q || carregaCoincideix(x.c, q))
+        );
         for (const x of capSetmana) {
             nMes++;
             kgMes += kgDeCarrega(x.c);
+            if (x.c.is_granel) nGranel++;
+            const [yy, mm, dd] = x.data.split("-").map(Number);
+            const dillunsKey = isoLocal(dilluns(new Date(yy, mm - 1, dd)));
+            if (dillunsKey === dillunsAvuiIso) nSetmana++;
         }
         state.carreguesPerDia = perDia;
         state.capSetmana = capSetmana;
         state.totalsCount = nMes;
         state.totalsKg = kgMes;
+        state.totalsSetmana = nSetmana;
+        state.totalsGranel = nGranel;
     }
 
     // ---------------------------------------------------------------
@@ -198,14 +278,62 @@
         $("#cal-titol").textContent = capitalitzar(fmtMes.format(d));
     }
 
+    function formatKgCompact(kg) {
+        if (kg >= 1000) {
+            const t = kg / 1000;
+            return `${t.toLocaleString("ca-ES", { maximumFractionDigits: t < 10 ? 1 : 0 })} t`;
+        }
+        return `${fmtKg0.format(kg)} kg`;
+    }
+
+    function renderLegenda() {
+        const el = $("#cal-legend");
+        if (!el) return;
+        if (state.traOrdre.length === 0) {
+            el.hidden = true;
+            el.innerHTML = "";
+            return;
+        }
+        el.hidden = false;
+        const chips = state.traOrdre.map(codi => {
+            const e = state.traMap.get(codi);
+            const isActive = state.filtreTra === codi;
+            const isDimmed = state.filtreTra && !isActive;
+            const nom = e.nom || codi;
+            return `<button type="button" class="cal-legend-chip${isActive ? " is-active" : ""}${isDimmed ? " is-dimmed" : ""}"
+                style="--c:${e.color}"
+                data-tra="${escapeHtml(codi)}"
+                title="${escapeHtml(nom)} (${escapeHtml(codi)}) · ${e.n} càrregues">
+                <span class="cal-legend-dot" aria-hidden="true"></span>
+                <span class="cal-legend-nom">${escapeHtml(nom)}</span>
+                <span class="cal-legend-n">${e.n}</span>
+            </button>`;
+        }).join("");
+        const clear = state.filtreTra
+            ? `<button type="button" class="cal-legend-clear" id="cal-legend-clear">✕ Treu filtre</button>`
+            : "";
+        el.innerHTML = `<span class="cal-legend-lbl">Transportistes</span>${chips}${clear}`;
+    }
+
     function renderStats() {
         const stats = $("#cal-stats");
         if (state.totalsCount === 0) {
-            stats.innerHTML = `<span class="cal-stat-chip cal-stat-empty">Cap càrrega aquest mes</span>`;
+            stats.innerHTML = `<div class="cal-kpi-card is-empty" role="status">
+                <span class="cal-kpi-val">—</span>
+                <span class="cal-kpi-lbl">Cap càrrega aquest mes</span>
+            </div>`;
         } else {
+            const card = (val, lbl, title, icon, mod) =>
+                `<div class="cal-kpi-card${mod ? " " + mod : ""}" title="${title}">
+                    <span class="cal-kpi-ico" aria-hidden="true">${icon}</span>
+                    <span class="cal-kpi-val">${val}</span>
+                    <span class="cal-kpi-lbl">${lbl}</span>
+                </div>`;
             stats.innerHTML =
-                `<span class="cal-stat-chip" title="Càrregues amb data de sortida aquest mes"><span class="cal-stat-ico" aria-hidden="true">📦</span>${state.totalsCount}<span class="cal-stat-lbl"> càrregues</span></span>` +
-                `<span class="cal-stat-chip" title="Suma total de kg aquest mes"><span class="cal-stat-ico" aria-hidden="true">⚖</span>${fmtKg0.format(state.totalsKg)}<span class="cal-stat-lbl"> kg</span></span>`;
+                card(state.totalsCount, "càrregues", "Càrregues amb data de sortida aquest mes", "📦", "") +
+                card(formatKgCompact(state.totalsKg), "total", "Suma total de pes (kg/t) aquest mes", "⚖", "") +
+                card(state.totalsSetmana, "aq. setm.", "Càrregues a la setmana actual (dins del mes vist)", "📅", "is-week") +
+                card(state.totalsGranel, "granel", "Càrregues a granel aquest mes", "🌾", "is-granel");
         }
 
         // Botó "Avui" destacat quan no estem al mes actual
@@ -243,7 +371,6 @@
 
                 const head = document.createElement("div");
                 head.className = "cal-cell-head";
-                // Dia de la setmana (sempre visible a la cel·la — sobreviu al scroll)
                 const dayLbl = document.createElement("span");
                 dayLbl.className = "cal-cell-day";
                 dayLbl.textContent = DIES_CURT[ws];
@@ -284,6 +411,16 @@
         grid.innerHTML = "";
         grid.appendChild(frag);
 
+        // Fade-in al canvi de mes (treure i reaplicar la classe per re-disparar l'animació)
+        const wrap = grid.closest(".cal-wrap");
+        if (wrap) {
+            wrap.classList.remove("is-loaded");
+            // Force reflow per re-disparar l'animació
+            // eslint-disable-next-line no-unused-expressions
+            void wrap.offsetWidth;
+            wrap.classList.add("is-loaded");
+        }
+
         if (state.scrollPendent && primeraCelaSetmanaActual) {
             // Primer render o "Avui": porta la fila de la setmana actual a la vista.
             // `behavior: 'auto'` (instant) per no fer scroll animat molest al carregar.
@@ -298,12 +435,23 @@
         li.tabIndex = 0;
         li.dataset.id = c.carrega_id || "";
         li.dataset.data = isoData;
+        li.dataset.tipus = c.is_granel ? "granel" : "saca";
         if (c.palletitzable === false) li.classList.add("is-no-palletitzable");
+        const traColor = colorPerTra(c.tra_codi);
+        if (traColor) li.style.setProperty("--tra-color", traColor);
         // Guardem dades per al tooltip propi
         li._cal = c;
 
         const nom = (c.car_descripcion || "").trim() || c.carrega_id || "—";
         const kg = kgDeCarrega(c);
+
+        if (c.is_granel) {
+            const tag = document.createElement("span");
+            tag.className = "cal-evt-tag";
+            tag.textContent = "GRA";
+            tag.title = "Càrrega a granel";
+            li.appendChild(tag);
+        }
 
         const sNom = document.createElement("span");
         sNom.className = "cal-evt-nom";
@@ -354,19 +502,34 @@
     function mostraTooltip(target, c) {
         const tt = getTooltipEl();
         tt.innerHTML = tooltipHTML(c);
+        tt.classList.remove("is-flipped-x", "is-flipped-y");
         tt.classList.add("is-visible");
         const r = target.getBoundingClientRect();
-        // Posiciona a la dreta de l'esdeveniment, o a sota si no hi cap.
-        const margin = 8;
+        const margin = 10;
         const ttRect = tt.getBoundingClientRect();
+        // Posiciona a la dreta de l'esdeveniment per defecte.
         let left = r.right + margin;
         let top  = r.top + (r.height / 2) - (ttRect.height / 2);
-        if (left + ttRect.width > window.innerWidth - 8) left = r.left - ttRect.width - margin;
-        if (left < 8) { left = r.left; top = r.bottom + margin; }
+        let flippedX = false, flippedY = false;
+        // Si no hi cap a la dreta, prova a l'esquerra
+        if (left + ttRect.width > window.innerWidth - 8) {
+            left = r.left - ttRect.width - margin;
+            flippedX = true;
+        }
+        // Si tampoc cap a l'esquerra, fer flip vertical (a sota la cel·la)
+        if (left < 8) {
+            left = Math.max(8, r.left + (r.width / 2) - (ttRect.width / 2));
+            top = r.bottom + margin;
+            flippedX = false;
+            flippedY = true;
+        }
+        // Clamps verticals per a no sortir de la pantalla
         if (top < 8) top = 8;
         if (top + ttRect.height > window.innerHeight - 8) top = window.innerHeight - ttRect.height - 8;
         tt.style.left = `${left}px`;
         tt.style.top  = `${top}px`;
+        if (flippedX) tt.classList.add("is-flipped-x");
+        if (flippedY) tt.classList.add("is-flipped-y");
     }
     function amagaTooltip() {
         if (tooltipEl) tooltipEl.classList.remove("is-visible");
@@ -539,6 +702,74 @@
     }
 
     // ---------------------------------------------------------------
+    // Picker mes/any (dropdown ancorat al títol)
+    // ---------------------------------------------------------------
+    const MESOS_PICKER = ["Gen", "Feb", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Oct", "Nov", "Des"];
+    const picker = {
+        any_: 0,
+        obert: false,
+    };
+
+    function pickerObre() {
+        if (picker.obert) return;
+        picker.obert = true;
+        picker.any_ = state.any_;
+        const el = $("#cal-picker");
+        el.hidden = false;
+        $("#cal-titol").classList.add("is-open");
+        pickerRender();
+        document.addEventListener("click", pickerClickFora, true);
+        document.addEventListener("keydown", pickerKeydown, true);
+    }
+    function pickerTanca() {
+        if (!picker.obert) return;
+        picker.obert = false;
+        $("#cal-picker").hidden = true;
+        $("#cal-titol").classList.remove("is-open");
+        document.removeEventListener("click", pickerClickFora, true);
+        document.removeEventListener("keydown", pickerKeydown, true);
+    }
+    function pickerToggle() {
+        if (picker.obert) pickerTanca(); else pickerObre();
+    }
+    function pickerClickFora(e) {
+        const wrap = e.target.closest(".cal-titol-wrap");
+        if (!wrap) pickerTanca();
+    }
+    function pickerKeydown(e) {
+        if (e.key === "Escape") {
+            e.preventDefault();
+            pickerTanca();
+            $("#cal-titol").focus();
+        }
+    }
+    function pickerRender() {
+        $("#cal-picker-year-lbl").textContent = String(picker.any_);
+        const grid = $("#cal-picker-grid");
+        const t = new Date();
+        const avuiAny = t.getFullYear();
+        const avuiMes = t.getMonth() + 1;
+        const frag = document.createDocumentFragment();
+        for (let m = 1; m <= 12; m++) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "cal-picker-mes"
+                + (picker.any_ === state.any_ && m === state.mes ? " is-current" : "")
+                + (picker.any_ === avuiAny && m === avuiMes ? " is-today-month" : "");
+            btn.textContent = MESOS_PICKER[m - 1];
+            btn.dataset.mes = String(m);
+            btn.addEventListener("click", () => {
+                pickerTanca();
+                state.scrollPendent = false;
+                anarA(picker.any_, m);
+            });
+            frag.appendChild(btn);
+        }
+        grid.innerHTML = "";
+        grid.appendChild(frag);
+    }
+
+    // ---------------------------------------------------------------
     // Bootstrap
     // ---------------------------------------------------------------
     function init() {
@@ -548,6 +779,39 @@
         $("#cal-prev").addEventListener("click", () => anarMes(-1));
         $("#cal-next").addEventListener("click", () => anarMes(1));
         $("#cal-avui").addEventListener("click", anarAvui);
+
+        // Llegenda: click a chip filtra per transportista
+        $("#cal-legend").addEventListener("click", (e) => {
+            const clearBtn = e.target.closest("#cal-legend-clear");
+            if (clearBtn) {
+                state.filtreTra = "";
+                aplicarFiltreText();
+                renderLegenda(); renderGrid(); renderCapSetmana(); renderStats();
+                return;
+            }
+            const chip = e.target.closest(".cal-legend-chip");
+            if (!chip) return;
+            const codi = chip.dataset.tra || "";
+            state.filtreTra = (state.filtreTra === codi) ? "" : codi;
+            aplicarFiltreText();
+            renderLegenda(); renderGrid(); renderCapSetmana(); renderStats();
+        });
+
+        // Picker mes/any: click al títol obre el dropdown
+        $("#cal-titol").addEventListener("click", pickerToggle);
+        $("#cal-titol").addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickerToggle(); }
+        });
+        $("#cal-picker-year-prev").addEventListener("click", (e) => {
+            e.stopPropagation();
+            picker.any_ -= 1;
+            pickerRender();
+        });
+        $("#cal-picker-year-next").addEventListener("click", (e) => {
+            e.stopPropagation();
+            picker.any_ += 1;
+            pickerRender();
+        });
 
         document.addEventListener("keydown", (e) => {
             if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;

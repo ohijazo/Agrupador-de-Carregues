@@ -41,6 +41,13 @@
 }
 #cal-avui.is-prominent:hover { background: var(--primary-dark); }
 
+.cal-titol-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: center;
+    min-width: 12rem;
+}
 .cal-titol {
     margin: 0;
     font-size: 1.35rem;
@@ -48,34 +55,168 @@
     color: var(--gray-900);
     text-transform: capitalize;
     letter-spacing: -0.01em;
-    flex: 1 1 auto;
     text-align: center;
-    min-width: 12rem;
+    cursor: pointer;
+    padding: .15rem .55rem;
+    border-radius: var(--radius-md);
+    transition: background var(--transition-fast);
+    user-select: none;
+}
+.cal-titol:hover { background: var(--gray-100); }
+.cal-titol.is-open { background: var(--primary-light); color: var(--primary-dark); }
+.cal-titol::after {
+    content: "▾";
+    font-size: .7em;
+    margin-left: .35rem;
+    opacity: .55;
+    vertical-align: middle;
 }
 
-/* Pastilles de stats del mes */
+/* Picker mes/any (dropdown ancorat sota el títol) */
+.cal-picker {
+    position: absolute;
+    top: calc(100% + .35rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: .6rem;
+    width: 18rem;
+}
+.cal-picker[hidden] { display: none; }
+.cal-picker-year {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: .55rem;
+}
+.cal-picker-year-lbl {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--gray-900);
+    font-variant-numeric: tabular-nums;
+}
+.cal-picker-yarrow {
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    color: var(--gray-700);
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.cal-picker-yarrow:hover { background: var(--gray-100); border-color: var(--gray-300); }
+.cal-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: .35rem;
+}
+.cal-picker-mes {
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    color: var(--gray-700);
+    padding: .5rem .25rem;
+    border-radius: var(--radius-sm);
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: capitalize;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.cal-picker-mes:hover { background: var(--gray-100); border-color: var(--gray-300); }
+.cal-picker-mes.is-current {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+.cal-picker-mes.is-today-month {
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
+.cal-picker-mes.is-current.is-today-month {
+    color: #fff;
+}
+
+/* KPI cards del mes (substitueix les antigues stat-chips) */
 .cal-stats {
     display: inline-flex;
-    align-items: center;
-    gap: .4rem;
+    align-items: stretch;
+    gap: .5rem;
     flex-wrap: wrap;
 }
-.cal-stat-chip {
-    display: inline-flex;
+.cal-kpi-card {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-rows: auto auto;
+    column-gap: .5rem;
+    row-gap: 0;
     align-items: center;
-    gap: .3rem;
-    padding: .3rem .65rem;
-    border-radius: 999px;
-    background: var(--gray-100);
-    color: var(--gray-700);
-    font-size: .82rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+    padding: .35rem .7rem .4rem;
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    min-width: 5.2rem;
+    box-shadow: var(--shadow-sm);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
-.cal-stat-chip .cal-stat-ico { font-size: .95rem; line-height: 1; }
-.cal-stat-chip .cal-stat-lbl { font-weight: 500; color: var(--gray-500); }
-.cal-stat-chip.cal-stat-empty { background: var(--warning-bg); color: var(--warning); }
+.cal-kpi-card:hover { border-color: var(--gray-300); box-shadow: var(--shadow-md); }
+.cal-kpi-ico {
+    grid-row: 1 / span 2;
+    font-size: 1.15rem;
+    line-height: 1;
+    opacity: .85;
+}
+.cal-kpi-val {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+.cal-kpi-lbl {
+    font-size: .68rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    line-height: 1;
+}
+.cal-kpi-card.is-empty {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    background: var(--gray-50);
+    border-style: dashed;
+    color: var(--gray-500);
+    padding: .45rem .8rem;
+}
+.cal-kpi-card.is-empty .cal-kpi-val {
+    color: var(--gray-400);
+    font-size: 1rem;
+    display: none;
+}
+.cal-kpi-card.is-empty .cal-kpi-lbl {
+    color: var(--gray-500);
+    font-size: .78rem;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+}
+.cal-kpi-card.is-week {
+    background: linear-gradient(180deg, #fff 0%, var(--primary-light) 100%);
+    border-color: var(--primary-light);
+}
+.cal-kpi-card.is-week .cal-kpi-val { color: var(--primary-dark); }
+.cal-kpi-card.is-granel {
+    background: linear-gradient(180deg, #fff 0%, #e6f4f1 100%);
+    border-color: #c2e0d8;
+}
+.cal-kpi-card.is-granel .cal-kpi-val { color: #234e52; }
 
 /* Caixa de cerca */
 .cal-search { position: relative; }
@@ -97,6 +238,89 @@
 
 .cal-main { padding-top: 1.25rem; padding-bottom: 2.5rem; }
 
+/* --- Llegenda de transportistes -------------------------------- */
+.cal-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-bottom: .85rem;
+    padding: .5rem .75rem;
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+.cal-legend-lbl {
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    align-self: center;
+    margin-right: .25rem;
+}
+.cal-legend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .2rem .55rem .2rem .35rem;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: 999px;
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+    line-height: 1.2;
+    max-width: 14rem;
+}
+.cal-legend-chip:hover {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+.cal-legend-chip .cal-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--c, var(--gray-400));
+    flex-shrink: 0;
+}
+.cal-legend-chip .cal-legend-nom {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.cal-legend-chip .cal-legend-n {
+    font-weight: 500;
+    color: var(--gray-500);
+    font-variant-numeric: tabular-nums;
+}
+.cal-legend-chip.is-active {
+    background: var(--c, var(--primary));
+    border-color: transparent;
+    color: #fff;
+}
+.cal-legend-chip.is-active .cal-legend-dot {
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(255,255,255,.5);
+}
+.cal-legend-chip.is-active .cal-legend-n { color: rgba(255,255,255,.85); }
+.cal-legend-chip.is-dimmed { opacity: .4; }
+.cal-legend-clear {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    color: var(--gray-700);
+    font-size: .72rem;
+    padding: .2rem .55rem;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+.cal-legend-clear:hover { background: var(--gray-100); }
+
 .cal-loading,
 .cal-error {
     padding: .75rem 1rem;
@@ -117,8 +341,13 @@
     overflow: hidden;
     border: 1px solid var(--gray-200);
 }
+.cal-wrap.is-loaded { animation: cal-fade-in .22s ease-out; }
+@keyframes cal-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
+}
 
-/* --- Capçaleres de dia + grid (5 cols) ----------------------- */
+/* --- Capçaleres de dia + grid (5 cols, Dl-Dv) ------------------ */
 .cal-grid-head,
 .cal-grid {
     display: grid;
@@ -148,7 +377,7 @@
     position: relative;
     transition: background var(--transition-fast);
 }
-.cal-cell:hover { background: #fcfdff; }
+.cal-cell:hover { background: #fcfdff; box-shadow: inset 0 0 0 1px var(--gray-300); }
 .cal-cell.is-other-month { background: var(--gray-50); }
 .cal-cell.is-other-month:hover { background: #f1f4f8; }
 .cal-cell.is-other-month .cal-cell-num,
@@ -170,7 +399,8 @@
 }
 
 .cal-cell.is-today {
-    background: linear-gradient(180deg, #ddeaf9 0%, #f4f9ff 60%, #fff 100%);
+    background: var(--primary-light);
+    box-shadow: inset 0 0 0 2px rgba(44, 82, 130, 0.18);
 }
 .cal-cell.is-today::before {
     width: 3px;
@@ -261,11 +491,12 @@
 }
 
 .cal-evt {
+    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     gap: .4rem;
-    padding: .3rem .5rem;
+    padding: .3rem .55rem .3rem .5rem;
     border-radius: var(--radius-sm);
     background: var(--primary-light);
     color: var(--primary-dark);
@@ -273,7 +504,20 @@
     line-height: 1.3;
     cursor: pointer;
     transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-    border-left: 3px solid var(--primary);
+    /* Border esquerra: color del transportista (cau a primary si no n'hi ha) */
+    border-left: 3px solid var(--tra-color, var(--primary));
+}
+/* Tira de color del transportista a la vora dreta */
+.cal-evt::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    right: 0;
+    width: 3px;
+    background: var(--tra-color, transparent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    pointer-events: none;
 }
 .cal-evt:hover {
     background: var(--primary);
@@ -303,7 +547,9 @@
 .cal-evt.is-no-palletitzable {
     background: var(--gray-100);
     color: var(--gray-700);
-    border-left-color: var(--gray-400);
+    /* No sobreescriure el border-left: deixa que mostri el color del
+       transportista (cau a gray-400 si no n'hi ha) */
+    border-left-color: var(--tra-color, var(--gray-400));
     font-style: italic;
 }
 .cal-evt.is-no-palletitzable:hover {
@@ -311,11 +557,51 @@
     color: #fff;
 }
 
-/* --- Secció cap de setmana --------------------------------- */
+/* Granel: variant teal — destaca les càrregues a granel d'un cop d'ull.
+   Mantinc fons + color + pastilla GRA, però el border-left segueix sent
+   el color del transportista (cau a teal si no n'hi ha). */
+.cal-evt[data-tipus="granel"] {
+    background: #e6f4f1;
+    color: #234e52;
+    border-left-color: var(--tra-color, #2c7a7b);
+}
+.cal-evt[data-tipus="granel"]:hover {
+    background: #2c7a7b;
+    color: #fff;
+}
+.cal-evt[data-tipus="granel"].is-no-palletitzable {
+    background: #e6f4f1;
+    color: #234e52;
+    border-left-color: var(--tra-color, #2c7a7b);
+    font-style: italic;
+}
+
+.cal-evt-tag {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 .35rem;
+    height: 1.05rem;
+    font-size: .62rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    background: #2c7a7b;
+    color: #fff;
+    border-radius: 3px;
+    text-transform: uppercase;
+    line-height: 1;
+}
+.cal-evt[data-tipus="granel"]:hover .cal-evt-tag {
+    background: #fff;
+    color: #2c7a7b;
+}
+
+/* --- Secció cap de setmana (sorra suau, integrat amb el sistema) ---- */
 .cal-capsetmana {
     margin-top: 1.5rem;
-    background: var(--warning-bg);
-    border: 1px solid #f6e05e;
+    background: #fef9e7;
+    border: 1px solid #f1e0a8;
+    border-left: 4px solid var(--warning);
     border-radius: var(--radius-lg);
     padding: 1rem 1.25rem;
 }
@@ -354,7 +640,7 @@
     font-size: .85rem;
     transition: background var(--transition-fast), transform var(--transition-fast);
 }
-.cal-cs-item:hover { background: #fffaf0; transform: translateX(2px); }
+.cal-cs-item:hover { background: #fef9e7; transform: translateX(2px); }
 .cal-cs-item:focus-visible { outline: 2px solid var(--warning); outline-offset: 1px; }
 .cal-cs-data { color: var(--gray-700); font-weight: 600; text-transform: capitalize; }
 .cal-cs-nom { color: var(--gray-900); font-weight: 600; }
@@ -367,30 +653,70 @@
 }
 .cal-cs-item.is-no-palletitzable { font-style: italic; opacity: .8; }
 
-/* --- Tooltip propi ----------------------------------------- */
+/* --- Tooltip propi (clar, coherent amb la resta de la UI) -- */
 .cal-tooltip {
     position: fixed;
     z-index: 10000;
     max-width: 280px;
     padding: .65rem .8rem;
-    background: #1a202c;
-    color: #fff;
+    background: #fff;
+    color: var(--gray-900);
+    border: 1px solid var(--gray-200);
     border-radius: var(--radius-md);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+    box-shadow: var(--shadow-lg);
     font-size: .8rem;
     line-height: 1.4;
     opacity: 0;
     pointer-events: none;
-    transition: opacity var(--transition-fast);
+    transform: translateY(2px);
+    transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
-.cal-tooltip.is-visible { opacity: 1; }
-.cal-tooltip .cal-tt-titol { font-weight: 700; margin-bottom: .15rem; }
-.cal-tooltip .cal-tt-id { color: #cbd5e0; margin-bottom: .35rem; font-size: .72rem; }
-.cal-tooltip .cal-tt-id code { background: rgba(255,255,255,.08); padding: .05rem .35rem; border-radius: 3px; color: #cbd5e0; }
-.cal-tooltip .cal-tt-row { margin: .15rem 0; }
-.cal-tooltip .cal-tt-row .muted { color: #a0aec0; font-weight: 400; }
-.cal-tooltip .cal-tt-row strong { color: #fff; }
-.cal-tooltip .cal-tt-hint { margin-top: .4rem; font-size: .7rem; color: #718096; font-style: italic; }
+.cal-tooltip.is-visible { opacity: 1; transform: translateY(0); }
+.cal-tooltip .cal-tt-titol { font-weight: 700; margin-bottom: .15rem; color: var(--gray-900); }
+.cal-tooltip .cal-tt-id { color: var(--gray-500); margin-bottom: .35rem; font-size: .72rem; }
+.cal-tooltip .cal-tt-id code {
+    background: var(--gray-100);
+    padding: .05rem .35rem;
+    border-radius: 3px;
+    color: var(--gray-700);
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+.cal-tooltip .cal-tt-row { margin: .15rem 0; color: var(--gray-700); }
+.cal-tooltip .cal-tt-row .muted { color: var(--gray-500); font-weight: 400; }
+.cal-tooltip .cal-tt-row strong { color: var(--gray-900); }
+.cal-tooltip .cal-tt-hint { margin-top: .4rem; font-size: .7rem; color: var(--gray-500); font-style: italic; }
+/* Fletxa del tooltip */
+.cal-tooltip::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: #fff;
+    border-left: 1px solid var(--gray-200);
+    border-bottom: 1px solid var(--gray-200);
+    transform: rotate(45deg);
+}
+/* Per defecte la fletxa apunta a l'esquerra (tooltip a la dreta de la cel·la) */
+.cal-tooltip:not(.is-flipped-x):not(.is-flipped-y)::after {
+    left: -6px;
+    top: 50%;
+    margin-top: -5px;
+    transform: rotate(45deg);
+}
+/* Tooltip a l'esquerra de la cel·la → fletxa a la dreta */
+.cal-tooltip.is-flipped-x:not(.is-flipped-y)::after {
+    right: -6px;
+    top: 50%;
+    margin-top: -5px;
+    transform: rotate(-135deg);
+}
+/* Tooltip a sota la cel·la → fletxa a sobre */
+.cal-tooltip.is-flipped-y::after {
+    top: -6px;
+    left: 50%;
+    margin-left: -5px;
+    transform: rotate(135deg);
+}
 
 /* --- Modal --------------------------------------------------- */
 .cal-modal {
@@ -491,10 +817,17 @@
     .cal-cell-badge { font-size: .65rem; height: 1rem; min-width: 1rem; }
     .cal-evt { padding: .2rem .35rem; font-size: .72rem; border-left-width: 2px; }
     .cal-evt-kg { display: none; }
+    .cal-evt-tag { font-size: .55rem; height: .9rem; padding: 0 .2rem; }
     .cal-evt:hover { transform: none; }
     .cal-grid-head > div { font-size: .7rem; padding: .4rem .15rem; }
     .cal-d-long { display: none; }
     .cal-d-short { display: inline; }
     .cal-cs-item { grid-template-columns: 1fr; gap: .15rem; }
     .cal-tooltip { max-width: 90vw; }
+    /* KPI cards: ajustar al mòbil */
+    .cal-stats { gap: .35rem; width: 100%; justify-content: flex-start; }
+    .cal-kpi-card { min-width: 4.5rem; padding: .3rem .5rem .35rem; }
+    .cal-kpi-ico { font-size: 1rem; }
+    .cal-kpi-val { font-size: 1rem; }
+    .cal-kpi-lbl { font-size: .6rem; }
 }

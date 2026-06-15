@@ -29,8 +29,18 @@
             <button type="button" id="cal-avui" class="btn btn-ghost" title="Anar a avui">Avui</button>
             <button type="button" id="cal-next" class="btn btn-ghost" title="Mes següent" aria-label="Mes següent">›</button>
         </div>
-        <h2 id="cal-titol" class="cal-titol" aria-live="polite"></h2>
-        <div id="cal-stats" class="cal-stats"></div>
+        <div class="cal-titol-wrap">
+            <h2 id="cal-titol" class="cal-titol" aria-live="polite" tabindex="0" role="button" aria-haspopup="dialog" title="Salta a un altre mes"></h2>
+            <div id="cal-picker" class="cal-picker" hidden role="dialog" aria-label="Selector de mes">
+                <div class="cal-picker-year">
+                    <button type="button" id="cal-picker-year-prev" class="cal-picker-yarrow" aria-label="Any anterior">‹</button>
+                    <span id="cal-picker-year-lbl" class="cal-picker-year-lbl"></span>
+                    <button type="button" id="cal-picker-year-next" class="cal-picker-yarrow" aria-label="Any següent">›</button>
+                </div>
+                <div id="cal-picker-grid" class="cal-picker-grid" role="grid"></div>
+            </div>
+        </div>
+        <div id="cal-stats" class="cal-stats" role="group" aria-label="Estadístiques del mes"></div>
         <div class="cal-search">
             <input type="search" id="cal-cerca" class="cal-cerca-input" placeholder="Cerca (nom, transportista, matrícula…)" autocomplete="off" aria-label="Cerca dins el calendari">
         </div>
@@ -40,6 +50,8 @@
 <main class="container cal-main">
     <div id="cal-loading" class="muted cal-loading" hidden>Carregant…</div>
     <div id="cal-error" class="cal-error" hidden></div>
+
+    <div id="cal-legend" class="cal-legend" role="group" aria-label="Llegenda transportistes" hidden></div>
 
     <div class="cal-wrap">
         <div class="cal-grid-head" aria-hidden="true">

@@ -708,6 +708,16 @@ function actualitzaFilaCarrega(tr, c, idx) {
     tr.classList.toggle("row-grouped", bloquejada && estat?.tipus === "activa");
     tr.classList.toggle("row-grouped-progress", estat?.tipus === "en_preparacio");
     tr.classList.toggle("row-grouped-done", estat?.tipus === "finalitzada");
+
+    // Refresca el badge d'agrupació (3a td) i la cel·la d'agrupació (última td)
+    // — necessari perquè quan refresquem via polling, l'estat (n_preparats,
+    // finalitzada) pot haver canviat i el badge "(4/15)" hauria de reflectir-ho.
+    const novaBadgeTd = `<code>${escapeHtml(c.carrega_id)}</code>${badgeAgrupacioHTML(estat)}`;
+    const novaAgrupTd = cellAgrupacioHTML(estat);
+    const tdBadge = tr.children[2];
+    const tdAgrup = tr.children[tr.children.length - 1];
+    if (tdBadge && tdBadge.innerHTML !== novaBadgeTd) tdBadge.innerHTML = novaBadgeTd;
+    if (tdAgrup && tdAgrup.innerHTML !== novaAgrupTd) tdAgrup.innerHTML = novaAgrupTd;
 }
 
 function renderLlistaCarregues() {

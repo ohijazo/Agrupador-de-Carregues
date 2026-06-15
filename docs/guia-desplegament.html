@@ -9,12 +9,16 @@
         h1 { color: #2b6cb0; font-size: 20pt; border-bottom: 3px solid #2b6cb0; padding-bottom: 0.5rem; }
         h2 { color: #2c5282; font-size: 14pt; margin-top: 2rem; border-bottom: 1px solid #bee3f8; padding-bottom: 0.3rem; page-break-after: avoid; }
         h3 { color: #2d3748; font-size: 12pt; margin-top: 1.5rem; page-break-after: avoid; }
-        code { font-family: 'JetBrains Mono', 'Consolas', monospace; background: #edf2f7; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 10pt; }
-        pre { background: #1a202c; color: #e2e8f0; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 9.5pt; line-height: 1.5; }
-        pre code { background: none; color: inherit; padding: 0; }
-        table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 10pt; }
-        th, td { border: 1px solid #cbd5e0; padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+        code { font-family: 'JetBrains Mono', 'Consolas', monospace; background: #edf2f7; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 10pt; word-break: break-all; }
+        pre { background: #1a202c; color: #e2e8f0; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 9.5pt; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+        pre code { background: none; color: inherit; padding: 0; word-break: normal; }
+        table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 10pt; table-layout: auto; }
+        th, td { border: 1px solid #cbd5e0; padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
+        td code, th code { font-size: 9pt; }
         th { background: #edf2f7; font-weight: 600; }
+        table.compact { font-size: 9pt; }
+        table.compact th, table.compact td { padding: 0.35rem 0.45rem; }
+        table.compact code { font-size: 8.5pt; }
         .info { background: #ebf8ff; border-left: 4px solid #3182ce; padding: 0.6rem 1rem; margin: 0.75rem 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
         .warning { background: #fffbeb; border-left: 4px solid #d69e2e; padding: 0.6rem 1rem; margin: 0.75rem 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
         .danger { background: #fff5f5; border-left: 4px solid #e53e3e; padding: 0.6rem 1rem; margin: 0.75rem 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
@@ -26,6 +30,18 @@
         ul, ol { padding-left: 1.5rem; }
         li { margin-bottom: 0.3rem; }
         .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; color: #a0aec0; font-size: 9pt; text-align: center; }
+        @media print {
+            body { max-width: none; padding: 0; margin: 0; font-size: 10pt; }
+            h1 { font-size: 18pt; }
+            h2 { font-size: 13pt; }
+            h3 { font-size: 11pt; }
+            pre { font-size: 8.5pt; padding: 0.7rem; }
+            table { font-size: 9pt; page-break-inside: avoid; }
+            table.compact { font-size: 8pt; }
+            table.compact code { font-size: 7.5pt; }
+            th, td { padding: 0.35rem 0.45rem; }
+            .info, .warning, .danger, .success { font-size: 9.5pt; }
+        }
     </style>
 </head>
 <body>
@@ -74,7 +90,7 @@
 <ul>
     <li>Llistat i cerca de c&agrave;rregues amb filtres (transportista, data, estat, article).</li>
     <li>Vista <strong>calendari mensual</strong> de c&agrave;rregues amb codis de color per transportista i indicador de granel.</li>
-    <li>Agrupacions desades (b&uacute;ssola UUID, plantilles, productes preparats al magatzem).</li>
+    <li>Agrupacions desades (identificadors UUID, plantilles, productes preparats al magatzem).</li>
     <li>API REST per al frontend (vanilla JS).</li>
 </ul>
 
@@ -156,7 +172,7 @@
   venv/                     # Entorn virtual Python</code></pre>
 
 <h3>Comparativa amb les altres apps</h3>
-<table>
+<table class="compact">
     <tr><th>Aspecte</th><th>Lab FC</th><th>Comandes Venda</th><th>Visites</th><th>Agrupador C&agrave;rregues</th></tr>
     <tr><td>Directori</td><td><code>/var/www/lab-fc</code></td><td><code>/var/www/comandes-venda</code></td><td><code>/var/www/visites</code></td><td><code>/var/www/agrupacio-carregues</code></td></tr>
     <tr><td>Servei</td><td><code>lab-fc.service</code></td><td><code>comandes-venda.service</code></td><td><code>visites.service</code></td><td><code>agrupacio-carregues.service</code></td></tr>
@@ -258,7 +274,7 @@ sudo chown -R www-data:www-data /var/www/agrupacio-carregues</code></pre>
 <div class="danger">
     <strong>IMPORTANT:</strong> El fitxer <code>.env</code> NO est&agrave; al repositori per seguretat. Cal crear-lo manualment amb les credencials de connexi&oacute; a les bases de dades.
 </div>
-<pre><code>sudo -u www-data nano /var/www/agrupacio-carregues/.env</code></pre>
+<pre><code>sudo nano /var/www/agrupacio-carregues/.env</code></pre>
 
 <p>Contingut complet:</p>
 <pre><code># --- SQL Server (ERP, nom&eacute;s lectura) ---
@@ -321,9 +337,8 @@ sudo -u www-data venv/bin/pip install gunicorn</code></pre>
 
 <h3>6.6 Carregar l'esquema PostgreSQL</h3>
 <pre><code>cd /var/www/agrupacio-carregues
-sudo -u www-data psql -U app_agrupacions -d agrupaciocarregues -h localhost \
-                     -f db/schema.sql
-
+psql -U app_agrupacions -d agrupaciocarregues -h localhost -f db/schema.sql
+# Demanar&agrave; la contrasenya de app_agrupacions.
 # Hauria de crear: agrupacions, productes_preparats, agrupacio_carregues, v_agrupacions_estat</code></pre>
 
 <h3>6.7 Verificar connexions a les dues BDs</h3>
@@ -540,7 +555,7 @@ sudo nano /etc/cron.d/agrupacio-carregues-backup</code></pre>
     <tr><td>8</td><td>Servei actiu</td><td><code>systemctl status agrupacio-carregues</code></td><td><code>active (running)</code></td></tr>
     <tr><td>9</td><td>Port 50004 escoltant</td><td><code>ss -tlnp | grep 50004</code></td><td><code>LISTEN 127.0.0.1:50004</code></td></tr>
     <tr><td>10</td><td>Health check OK</td><td><code>curl http://localhost:50004/health</code></td><td>JSON amb <code>db</code>, <code>pg</code>, <code>motor</code> tots <code>ok:true</code></td></tr>
-    <tr><td>11</td><td>Apache respon</td><td><code>curl -I http://localhost/</code></td><td><code>200 OK</code> (HTML de l'app)</td></tr>
+    <tr><td>11</td><td>Apache respon (vhost correcte)</td><td><code>curl -I -H 'Host: agrupacions.agrienergia.local' http://localhost/</code></td><td><code>HTTP/1.1 200 OK</code></td></tr>
     <tr><td>12</td><td>P&agrave;gina principal carrega</td><td>Obrir <code>http://agrupacions.agrienergia.local</code></td><td>Llistat de c&agrave;rregues visible</td></tr>
     <tr><td>13</td><td>Calendari funciona</td><td>Obrir <code>http://agrupacions.agrienergia.local/calendari</code></td><td>Calendari mensual visible</td></tr>
     <tr><td>14</td><td>Agrupaci&oacute; (motor) funciona</td><td>Seleccionar c&agrave;rregues i clicar "Agrupar"</td><td>Resultat amb embalatges</td></tr>
@@ -580,8 +595,7 @@ sudo -u www-data venv/bin/pip install -r requirements.txt
 
 # 3. Aplicar canvis al schema (si db/schema.sql ha canviat)
 #    El schema &eacute;s idempotent (CREATE IF NOT EXISTS), s'hi pot tornar a passar.
-sudo -u www-data psql -U app_agrupacions -d agrupaciocarregues -h localhost \
-                     -f db/schema.sql
+psql -U app_agrupacions -d agrupaciocarregues -h localhost -f db/schema.sql
 
 # 4. Reiniciar el servei
 sudo systemctl restart agrupacio-carregues
@@ -672,7 +686,7 @@ tail -f /var/log/apache2/agrupacio-carregues-error.log</code></pre>
 </div>
 
 <h3>Comparativa de serveis al servidor (un cop desplegat)</h3>
-<table>
+<table class="compact">
     <tr><th></th><th>Lab FC</th><th>Comandes Venda</th><th>Visites</th><th>Agrupador C&agrave;rregues</th></tr>
     <tr><td>Directori</td><td><code>/var/www/lab-fc</code></td><td><code>/var/www/comandes-venda</code></td><td><code>/var/www/visites</code></td><td><code>/var/www/agrupacio-carregues</code></td></tr>
     <tr><td>Servei</td><td><code>lab-fc.service</code></td><td><code>comandes-venda.service</code></td><td><code>visites.service</code></td><td><code>agrupacio-carregues.service</code></td></tr>

@@ -596,20 +596,38 @@ function actualitzarPeuPaginacio() {
     }
 }
 
-// Resol l'estat d'agrupació d'una càrrega: null o info de l'agrupació
-// (qualsevol presència bloqueja: una càrrega només pot estar en una agrupació).
+// Resol l'estat d'agrupació d'una càrrega: null o info de l'agrupació.
+// Tres estats possibles:
+//   - "activa"         → agrupada però cap producte preparat encara
+//   - "en_preparacio"  → 1+ productes ja marcats però no tots (magatzem treballant-hi)
+//   - "finalitzada"    → tots els productes preparats
+// (una càrrega només pot estar en una agrupació activa al mateix temps)
 function estatAgrupacio(c) {
     const ags = c.agrupacions || [];
     if (!ags.length) return null;
     const activa = ags.find(a => !a.finalitzada);
-    const info = activa || ags[0];
-    return { tipus: activa ? "activa" : "finalitzada", info, totes: ags };
+    if (activa) {
+        const tipus = (activa.n_preparats || 0) > 0 ? "en_preparacio" : "activa";
+        return { tipus, info: activa, totes: ags };
+    }
+    return { tipus: "finalitzada", info: ags[0], totes: ags };
 }
 
 function badgeAgrupacioHTML(estat) {
     if (!estat) return "";
-    const cls = estat.tipus === "activa" ? "badge-grouped" : "badge-grouped badge-grouped--done";
-    const txt = estat.tipus === "activa" ? "Ja agrupada" : "Agrupada (acabada)";
+    let cls, txt;
+    if (estat.tipus === "finalitzada") {
+        cls = "badge-grouped badge-grouped--done";
+        txt = "Agrupada (acabada)";
+    } else if (estat.tipus === "en_preparacio") {
+        cls = "badge-grouped badge-grouped--progress";
+        const np = estat.info.n_preparats || 0;
+        const nt = estat.info.n_productes || 0;
+        txt = nt > 0 ? `Agrupada (en preparació · ${np}/${nt})` : "Agrupada (en preparació)";
+    } else {
+        cls = "badge-grouped";
+        txt = "Ja agrupada";
+    }
     const tip = `${estat.info.nom} · ${fmtData(estat.info.ts) || ""}`;
     return ` <button type="button" class="${cls}" title="${escapeHtml(tip)}" data-act="obrir-agrupacio" data-id="${escapeHtml(estat.info.id)}">${txt}</button>`;
 }
@@ -660,8 +678,10 @@ function crearFilaCarrega(c) {
 function cellAgrupacioHTML(estat) {
     if (!estat) return `<span class="muted">—</span>`;
     const dataStr = fmtData(estat.info.ts) || "";
-    const cls = estat.tipus === "finalitzada" ? "cell-agrupacio cell-agrupacio--done" : "cell-agrupacio";
-    const dot = estat.tipus === "finalitzada" ? "✓" : "●";
+    let cls = "cell-agrupacio";
+    let dot = "●";
+    if (estat.tipus === "finalitzada") { cls += " cell-agrupacio--done"; dot = "✓"; }
+    else if (estat.tipus === "en_preparacio") { cls += " cell-agrupacio--progress"; dot = "◐"; }
     return `<button type="button" class="${cls}" data-act="obrir-agrupacio" data-id="${escapeHtml(estat.info.id)}" title="Veure resultat · ${escapeHtml(estat.info.nom)}">
         <span class="cell-agrupacio-dot">${dot}</span>
         <span class="cell-agrupacio-nom">${escapeHtml(estat.info.nom)}</span>
@@ -681,6 +701,7 @@ function actualitzaFilaCarrega(tr, c, idx) {
     }
     tr.classList.toggle("row-selected", seleccionada);
     tr.classList.toggle("row-grouped", bloquejada && estat?.tipus === "activa");
+    tr.classList.toggle("row-grouped-progress", estat?.tipus === "en_preparacio");
     tr.classList.toggle("row-grouped-done", estat?.tipus === "finalitzada");
 }
 

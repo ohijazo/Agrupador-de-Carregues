@@ -231,7 +231,8 @@ def index_carregues_agrupades() -> dict[str, list[dict]]:
             return _index_cache
 
     sql = """
-        SELECT ac.carrega_id, v.id, v.nom, v.ts, v.finalitzada
+        SELECT ac.carrega_id, v.id, v.nom, v.ts, v.finalitzada,
+               v.n_productes, v.n_preparats
         FROM agrupacio_carregues ac
         JOIN v_agrupacions_estat v ON v.id = ac.agrupacio_id
         ORDER BY v.ts DESC
@@ -243,6 +244,8 @@ def index_carregues_agrupades() -> dict[str, list[dict]]:
             "nom": r["nom"],
             "ts": _format_ts(r["ts"]),
             "finalitzada": bool(r["finalitzada"]),
+            "n_productes": int(r["n_productes"] or 0),
+            "n_preparats": int(r["n_preparats"] or 0),
         })
     with _index_lock:
         _index_cache = index

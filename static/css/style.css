@@ -529,6 +529,7 @@ body {
 
 /* --- Càrrega ja agrupada (visual marcat per detectar-ho ràpid) --- */
 .data-table tbody tr.row-grouped > td,
+.data-table tbody tr.row-grouped-progress > td,
 .data-table tbody tr.row-grouped-done > td {
     background: #fff3c4;
 }
@@ -537,6 +538,16 @@ body {
 }
 .data-table tbody tr.row-grouped:hover > td { background: #ffe9a1; }
 .data-table tbody tr.row-grouped .col-check input[type=checkbox] {
+    cursor: not-allowed;
+    opacity: .55;
+}
+/* Agrupada en preparació: ambar més saturat per indicar "treballant-hi" */
+.data-table tbody tr.row-grouped-progress > td { background: #ffe4b8; }
+.data-table tbody tr.row-grouped-progress > td:first-child {
+    box-shadow: inset 6px 0 0 #d97706;
+}
+.data-table tbody tr.row-grouped-progress:hover > td { background: #fed7a3; }
+.data-table tbody tr.row-grouped-progress .col-check input[type=checkbox] {
     cursor: not-allowed;
     opacity: .55;
 }
@@ -604,6 +615,11 @@ body {
     font-family: inherit;
 }
 .badge-grouped:hover { filter: brightness(1.1); }
+.badge-grouped--progress {
+    background: #d97706;
+    border-color: #d97706;
+    color: #fff;
+}
 .badge-grouped--done {
     background: var(--success-strong);
     border-color: var(--success-strong);
@@ -631,6 +647,10 @@ body {
     text-align: left;
 }
 .cell-agrupacio:hover { filter: brightness(.97); }
+.cell-agrupacio--progress {
+    background: #ffedd5;
+    border-color: #d97706;
+}
 .cell-agrupacio--done {
     background: var(--gray-100);
     border-color: var(--gray-300);
@@ -640,6 +660,10 @@ body {
     color: var(--warning);
     font-size: .85rem;
     line-height: 1;
+}
+.cell-agrupacio--progress .cell-agrupacio-dot {
+    color: #d97706;
+    font-weight: 800;
 }
 .cell-agrupacio--done .cell-agrupacio-dot {
     color: var(--success-strong);

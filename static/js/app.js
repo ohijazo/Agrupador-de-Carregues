@@ -62,6 +62,8 @@ const state = {
     // tornar a la pàgina principal tal com l'havia deixat).
     backupAbansAgrupacio: null,
     modalDesAgrupacioDesada: false,
+    // art_codis preparats al magatzem per a l'agrupació actualment oberta al modal
+    productesPreparats: new Set(),
     // Polling de canvis a les agrupacions (refresc automatic de la llista
     // principal quan algu marca un producte com a preparat al magatzem).
     agrupacionsVersion: null,
@@ -1040,6 +1042,7 @@ async function agrupar() {
         }
         const resultat = await resp.json();
         state.resultat = resultat;
+        state.productesPreparats = new Set();  // agrupació nova: cap producte preparat encara
         state.agrupacioActualId = null;   // resultat nou, encara no desat
         state.modalDesAgrupacioDesada = false;
         state.backupAbansAgrupacio = null;
@@ -1476,10 +1479,15 @@ function renderTaulaProductes() {
                         ${detall ? `<span class="dot-detall">(${escapeHtml(detall)})</span>` : ""}
                     </div>`;
         }).join("");
+        const preparat = state.productesPreparats.has(p.art_codi);
         const tr = document.createElement("tr");
+        if (preparat) tr.classList.add("row-preparat");
+        const checkHTML = preparat
+            ? `<span class="preparat-mark" title="Producte ja preparat al magatzem" aria-label="Preparat">✓</span>`
+            : "";
         tr.innerHTML = `
             <td><button class="toggle-btn" data-target="${idRow}" aria-expanded="false">▶</button></td>
-            <td><code>${escapeHtml(p.art_codi)}</code></td>
+            <td>${checkHTML}<code>${escapeHtml(p.art_codi)}</code></td>
             <td>${escapeHtml(p.art_descrip)}</td>
             <td>${escapeHtml(p.tunitat)}</td>
             <td class="col-carregues-dots">${dotsProd}</td>
@@ -1881,6 +1889,7 @@ async function carregarAgrupacioDesada(id) {
         state.carregues = obj.carregues || [];
         state.seleccio = new Set(state.carregues.map(c => c.carrega_id));
         state.resultat = obj.resultat;
+        state.productesPreparats = new Set(obj.productes_preparats || []);
         state.agrupacioActualId = id;
         renderLlistaCarregues();
         renderResultat(state.resultat);

@@ -62,6 +62,11 @@ const state = {
     // tornar a la pàgina principal tal com l'havia deixat).
     backupAbansAgrupacio: null,
     modalDesAgrupacioDesada: false,
+    // Polling de canvis a les agrupacions (refresc automatic de la llista
+    // principal quan algu marca un producte com a preparat al magatzem).
+    agrupacionsVersion: null,
+    agrupacionsPollId: null,
+    agrupacionsRefreshInFlight: false,
 };
 
 const PLANTILLA_MIN_COMPATIBLES = 2;  // llindar per mostrar el banner
@@ -2076,6 +2081,87 @@ function netejaFiltresAvancats() {
     buscarCarregues();
 }
 
+// ============================================================
+// Polling lleuger de canvis a les agrupacions
+// El backend manté un comptador (version) que s'incrementa cada cop que
+// algú desa/elimina una agrupació o marca/desmarca un producte. Cada 5s
+// preguntem aquesta versió; si ha canviat, refresquem la llista visible
+// sense reiniciar selecció, filtres, scroll ni dialogs oberts.
+// ============================================================
+async function comprovaVersionAgrupacions() {
+    if (document.hidden) return;
+    // Evitem refrescos enmig d'un dialog/modal obert (no interrompre l'usuari)
+    if (document.querySelector("dialog[open]")) return;
+    if (state.agrupacionsRefreshInFlight) return;
+    try {
+        const r = await fetch("/api/agrupacions/version", { credentials: "same-origin" });
+        if (!r.ok) return;
+        const data = await r.json();
+        const v = data && data.v;
+        if (typeof v !== "number") return;
+        if (state.agrupacionsVersion === null) {
+            // Primer poll: només memoritzem el valor inicial
+            state.agrupacionsVersion = v;
+            return;
+        }
+        if (v !== state.agrupacionsVersion) {
+            state.agrupacionsVersion = v;
+            await refrescarLlistaSilenciosament();
+        }
+    } catch { /* silent — el polling reintenta al següent tick */ }
+}
+
+async function refrescarLlistaSilenciosament() {
+    // Només si l'usuari ja ha buscat algun cop
+    if (!state.carregues || state.carregues.length === 0) return;
+    const desde = $("#desde")?.value;
+    const fins = $("#fins")?.value;
+    if (!desde || !fins) return;
+    const traCodis = msTransportistes ? msTransportistes.getSelected() : [];
+
+    state.agrupacionsRefreshInFlight = true;
+    try {
+        const params = new URLSearchParams({
+            desde, fins,
+            limit: String(Math.max(state.carregues.length, state.paginacio.limit)),
+            offset: "0",
+        });
+        for (const c of traCodis) params.append("tra_codi", c);
+        const { estat, art_codi } = state.filtresAvancats;
+        if (estat !== null && estat !== undefined && estat !== "") params.set("estat", String(estat));
+        if (art_codi) params.set("art_codi", art_codi);
+        const resp = await fetchJson(`/api/carregues?${params}`);
+        const items = Array.isArray(resp) ? resp : resp.items;
+        const total = Array.isArray(resp) ? items.length : resp.total;
+        // Conservem la selecció (només per als carrega_id que continuen presents)
+        const idsActuals = new Set(items.map(c => c.carrega_id));
+        for (const id of [...state.seleccio]) {
+            if (!idsActuals.has(id)) state.seleccio.delete(id);
+        }
+        state.carregues = items;
+        state.paginacio.total = total;
+        state.paginacio.offset = items.length;
+        renderLlistaCarregues();
+        actualitzarBannerPlantilles();
+        // Refresc silenciós — l'usuari veu només el canvi de color/estat
+        // a les files afectades (groc → ambar → verd).
+    } catch { /* silent */ }
+    finally {
+        state.agrupacionsRefreshInFlight = false;
+    }
+}
+
+function iniciaPollingAgrupacions() {
+    if (state.agrupacionsPollId) clearInterval(state.agrupacionsPollId);
+    state.agrupacionsPollId = setInterval(comprovaVersionAgrupacions, 5000);
+    // Primera comprovació immediata per inicialitzar la versió de referència
+    setTimeout(comprovaVersionAgrupacions, 300);
+    // En tornar a la pestanya, comprovem un cop de seguida (sense esperar 5s)
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) comprovaVersionAgrupacions();
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     const prefs = carregarPrefs();
     if (prefs.desde) $("#desde").value = prefs.desde;
@@ -2256,6 +2342,10 @@ document.addEventListener("DOMContentLoaded", () => {
         // petit retard perquè es vegi la UI inicial
         setTimeout(() => buscarCarregues(), 100);
     }
+
+    // Polling de canvis a les agrupacions (refresc automàtic quan algú
+    // marca un producte com a preparat al magatzem).
+    iniciaPollingAgrupacions();
 });
 
 })();

@@ -44,6 +44,15 @@ def _invalidar_index() -> None:
         _local_index_version += 1
 
 
+def get_version() -> int:
+    """Versió actual de l'índex d'agrupacions. Augmenta cada cop que es desa,
+    elimina, marca o desmarca un producte preparat. El frontend pot fer
+    polling d'aquest valor per detectar canvis sense haver de re-baixar
+    la llista sencera."""
+    with _index_lock:
+        return _local_index_version
+
+
 def _valida_id(id_: str) -> str:
     if not _RE_ID.fullmatch(id_):
         raise ValueError("id invàlid")

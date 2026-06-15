@@ -312,6 +312,14 @@ def api_agrupacions_eliminar(id_):
     return jsonify({"error": "Agrupació no trobada."}), 404
 
 
+@app.route("/api/agrupacions/version")
+def api_agrupacions_version():
+    """Versió actual de l'índex d'agrupacions (per a polling lleuger des
+    del frontend). El client compara aquest valor amb el que va veure
+    l'última vegada i només refetcha la llista pesada si ha canviat."""
+    return jsonify({"v": agrupacions_store.get_version()})
+
+
 @app.route("/api/agrupacions/<id_>/producte", methods=["PATCH"])
 def api_agrupacions_producte(id_):
     body = request.get_json(silent=True) or {}

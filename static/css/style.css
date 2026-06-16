@@ -70,6 +70,18 @@ body {
     font-size: 1rem;
 }
 .header-help .btn-icon:hover { background: rgba(255,255,255,.25); }
+.header-user {
+    color: #fff;
+    font-size: .85rem;
+    font-weight: 500;
+    margin-right: .35rem;
+    padding: .2rem .65rem;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.header-help form { margin: 0; }
 
 /* --- Filtres --- */
 .panel-filters {

@@ -25,6 +25,7 @@ from threading import Lock
 
 import psycopg
 
+import audit
 import db
 
 _RE_ID = re.compile(r"^[a-f0-9-]{8,40}$")
@@ -106,6 +107,11 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
                     ],
                 )
     _invalidar_index()
+    audit.log(
+        "agrupacio_desada",
+        target=id_,
+        detall={"nom": nom, "plantilla": plantilla, "n_carregues": n_carregues, "n_productes": n_productes},
+    )
     return {
         "id": id_,
         "nom": nom,
@@ -178,6 +184,7 @@ def eliminar(id_: str) -> bool:
     rows = db.execute("DELETE FROM agrupacions WHERE id = %s", (id_,))
     if rows:
         _invalidar_index()
+        audit.log("agrupacio_eliminada", target=id_)
         return True
     return False
 
@@ -211,6 +218,11 @@ def marca_producte(id_: str, art_codi: str, preparat: bool, ip: str | None = Non
                     (id_, art_codi),
                 )
     _invalidar_index()
+    audit.log(
+        "producte_marcat" if preparat else "producte_desmarcat",
+        target=id_,
+        detall={"art_codi": art_codi},
+    )
     return obtenir(id_)
 
 
@@ -226,6 +238,7 @@ def reset_preparats(id_: str, ip: str | None = None) -> dict | None:
                 return None
             cur.execute("DELETE FROM productes_preparats WHERE agrupacio_id = %s", (id_,))
     _invalidar_index()
+    audit.log("preparats_reset", target=id_)
     return obtenir(id_)
 
 

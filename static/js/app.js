@@ -112,8 +112,24 @@ function debounce(fn, ms) {
         t = setTimeout(() => fn(...args), ms);
     };
 }
+function getCsrfToken() {
+    const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+}
+
 async function fetchJson(url, options = {}) {
     let resp;
+    // Afegim el header CSRF automàticament a totes les peticions que
+    // modifiquen estat. Els GETs no el necessiten (no els valida el backend).
+    const method = (options.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+        const tok = getCsrfToken();
+        if (tok) {
+            const headers = new Headers(options.headers || {});
+            if (!headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", tok);
+            options = { ...options, headers };
+        }
+    }
     try {
         resp = await fetch(url, options);
     } catch (e) {
@@ -535,9 +551,10 @@ async function buscarCarregues(append = false) {
 // Si arriba un id, scroll a la fila i flash visual un cop renderitzada.
 // ============================================================
 function aplicaFocusPendent() {
-    const target = (window.__FOCUS_CARREGA__ || "").trim();
+    // El valor ve com a data-attr al <body> (evita inline script i compleix CSP)
+    const target = (document.body.dataset.focusCarrega || "").trim();
     if (!target) return;
-    window.__FOCUS_CARREGA__ = "";  // consumeix-lo: només una vegada per pàgina
+    document.body.dataset.focusCarrega = "";  // consumeix-lo: només una vegada per pàgina
     requestAnimationFrame(() => {
         const tr = document.querySelector(`#taula-carregues tbody tr[data-carrega-id="${CSS.escape(target)}"]`);
         if (!tr) return;

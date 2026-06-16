@@ -8,12 +8,16 @@ Endpoints:
 """
 import logging
 import os
+import secrets
 import sys
+import time
+from collections import defaultdict, deque
 from datetime import date, timedelta
 from logging.handlers import RotatingFileHandler
+from threading import Lock
 
 import pyodbc
-from flask import Flask, jsonify, render_template, request, url_for
+from flask import Flask, jsonify, make_response, redirect, render_template, request, session, url_for
 
 # --- Bootstrap .env i sys.path ABANS d'importar agregador ----------------
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -66,6 +70,19 @@ logging.basicConfig(level=logging.INFO, handlers=[_log_handler, _stream_handler]
 log = logging.getLogger("agrupacio")
 
 app = Flask(__name__)
+# Secret key per a signar les cookies de sessió (auth). En dev acceptem un
+# valor random si no està definit; en producció ha d'estar SEMPRE al .env
+# (si no, les sessions s'invaliden cada reinici).
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_urlsafe(48)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Strict",
+    SESSION_COOKIE_NAME="agc_session",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
+
+# Import després de configurar `app` per evitar imports circulars amb auth.py
+import auth  # noqa: E402
 
 
 # --- Cache-busting d'assets ----------------------------------------------
@@ -79,6 +96,19 @@ def _inject_static_helper():
             v = 0
         return url_for("static", filename=filename, v=v)
     return {"static_url": static_url}
+
+
+# --- Info d'usuari disponible a totes les plantilles ----------------------
+@app.context_processor
+def _inject_auth_context():
+    return {
+        "auth_enabled": auth.auth_enabled(),
+        "current_user": {
+            "username": session.get("user_username"),
+            "nom": session.get("user_name"),
+            "rol": session.get("user_rol"),
+        } if session.get("user_id") else None,
+    }
 
 
 # --- Headers de seguretat ------------------------------------------------
@@ -97,6 +127,69 @@ def secure_headers(resp):
     return resp
 
 
+# --- CSRF (double-submit cookie pattern) ----------------------------------
+# Per a PATCH/POST/DELETE als endpoints que modifiquen agrupacions, exigim
+# que el header `X-CSRF-Token` coincideixi amb el valor de la cookie
+# `csrf_token`. Aquesta cookie es genera la primera vegada que un client
+# fa qualsevol GET. El frontend la llegeix i la inclou a les peticions.
+CSRF_COOKIE_NAME = "csrf_token"
+CSRF_HEADER_NAME = "X-CSRF-Token"
+_CSRF_PROTECTED_PREFIXES = ("/api/agrupacions",)
+_CSRF_EXEMPT_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def _csrf_required(path: str, method: str) -> bool:
+    if method in _CSRF_EXEMPT_METHODS:
+        return False
+    return any(path.startswith(p) for p in _CSRF_PROTECTED_PREFIXES)
+
+
+@app.before_request
+def _csrf_check():
+    if not _csrf_required(request.path, request.method):
+        return None
+    cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
+    header = request.headers.get(CSRF_HEADER_NAME, "")
+    if not cookie or not header or not secrets.compare_digest(cookie, header):
+        log.warning("CSRF rebutjat path=%s method=%s ip=%s", request.path, request.method, request.remote_addr)
+        return jsonify({"error": "CSRF token absent o invàlid"}), 403
+    return None
+
+
+@app.after_request
+def _csrf_set_cookie(resp):
+    if not request.cookies.get(CSRF_COOKIE_NAME):
+        token = secrets.token_urlsafe(32)
+        # Cookie llegible per JS (necessari per al double-submit); marcada
+        # com SameSite=Strict per evitar enviament cross-site.
+        resp.set_cookie(
+            CSRF_COOKIE_NAME, token,
+            samesite="Strict", httponly=False, secure=False, max_age=60 * 60 * 24 * 30,
+        )
+    return resp
+
+
+# --- Rate-limit in-memory per IP -----------------------------------------
+# Suficient per al cas d'ús actual (LAN, 2 workers Gunicorn). Cada worker
+# té el seu propi comptador — acceptable perquè és defensiu, no estricte.
+_rate_lock = Lock()
+_rate_buckets: dict[str, deque] = defaultdict(deque)
+
+
+def _rate_limit(key: str, max_req: int, window_sec: int) -> bool:
+    """Retorna True si la petició està dins del límit, False si l'excedeix."""
+    now = time.monotonic()
+    cutoff = now - window_sec
+    with _rate_lock:
+        bucket = _rate_buckets[key]
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= max_req:
+            return False
+        bucket.append(now)
+        return True
+
+
 # --- Helpers d'errors estandarditzats ------------------------------------
 def _err_validacio(msg: str):
     return jsonify({"error": msg}), 400
@@ -112,6 +205,95 @@ def _err_motor():
 
 def _err_genèric():
     return jsonify({"error": "S'ha produït un error inesperat."}), 500
+
+
+# --- Autenticació: middleware + endpoints --------------------------------
+# Si `AUTH_ENABLED=true` al .env, tots els endpoints excepte els llistats a
+# `_AUTH_PUBLIC_PREFIXES` requereixen sessió. Per a `/api/*` retorna 401
+# (JSON); per a la resta redirigeix a /login.
+_AUTH_PUBLIC_PREFIXES = ("/login", "/logout", "/static", "/health", "/api/pbi")
+
+
+@app.before_request
+def _require_auth():
+    if not auth.auth_enabled():
+        return None
+    path = request.path
+    if any(path == p or path.startswith(p + "/") or path.startswith(p) for p in _AUTH_PUBLIC_PREFIXES):
+        return None
+    if session.get("user_id"):
+        return None
+    if path.startswith("/api/"):
+        return jsonify({"error": "Autenticació requerida"}), 401
+    return redirect(url_for("login", next=path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    next_path = request.values.get("next", "/") or "/"
+    if not next_path.startswith("/") or next_path.startswith("//"):
+        next_path = "/"
+    if request.method == "GET":
+        return render_template("login.html", next_path=next_path)
+    # POST: rate-limit per IP (max 5 intents/min)
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?")
+    if "," in ip:
+        ip = ip.split(",", 1)[0].strip()
+    if not _rate_limit(f"login:{ip}", max_req=5, window_sec=60):
+        return render_template("login.html", error="Massa intents. Espera un minut.", next_path=next_path), 429
+    username = (request.form.get("username") or "").strip().lower()
+    password = request.form.get("password") or ""
+    user = None
+    try:
+        user = auth.get_user_by_username(username)
+    except Exception:
+        log.exception("Login: error consultant usuari")
+    if not user or not user.get("actiu") or not auth.verify_password(password, user["password_hash"]):
+        try:
+            import audit as _audit
+            _audit.log("login_fallit", target=username or None, detall={"ip": ip})
+        except Exception:
+            pass
+        return render_template("login.html", error="Credencials invàlides.", next_path=next_path), 401
+    # Login OK
+    session.clear()
+    session.permanent = True
+    session["user_id"] = user["id"]
+    session["user_name"] = user["nom"]
+    session["user_username"] = user["username"]
+    session["user_rol"] = user["rol"]
+    try:
+        auth.actualitza_last_login(user["id"])
+        import audit as _audit
+        _audit.log("login_ok", target=user["username"])
+    except Exception:
+        pass
+    return redirect(next_path)
+
+
+@app.route("/logout", methods=["POST", "GET"])
+def logout():
+    if session.get("user_id"):
+        try:
+            import audit as _audit
+            _audit.log("logout", target=session.get("user_username"))
+        except Exception:
+            pass
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/api/me")
+def api_me():
+    if not session.get("user_id"):
+        return jsonify({"authenticated": False, "auth_enabled": auth.auth_enabled()})
+    return jsonify({
+        "authenticated": True,
+        "auth_enabled": True,
+        "username": session.get("user_username"),
+        "nom": session.get("user_name"),
+        "rol": session.get("user_rol"),
+    })
 
 
 @app.route("/")
@@ -424,8 +606,15 @@ def api_pbi_carregues():
     api_key_esperada = os.environ.get("PBI_API_KEY", "").strip()
     if not api_key_esperada:
         return jsonify({"error": "PBI_API_KEY no configurada al .env"}), 503
-    if request.headers.get("X-Api-Key", "") != api_key_esperada:
+    if not secrets.compare_digest(request.headers.get("X-Api-Key", ""), api_key_esperada):
         return jsonify({"error": "API key invàlida o absent"}), 401
+    # Rate-limit defensiu: max 30 req/min per IP
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?")
+    if "," in ip:
+        ip = ip.split(",", 1)[0].strip()
+    if not _rate_limit(f"pbi:{ip}", max_req=30, window_sec=60):
+        log.warning("Rate limit excedit a /api/pbi/carregues ip=%s", ip)
+        return jsonify({"error": "Massa peticions; espera abans de reintentar"}), 429
 
     avui = date.today()
     desde_raw = request.args.get("desde") or (avui - timedelta(days=90)).isoformat()
@@ -541,11 +730,22 @@ def health():
     except Exception as e:
         msg_motor = str(e)[:200]
     status = 200 if (ok_db and ok_motor and ok_pg) else 503
-    return jsonify({
-        "db": {"ok": ok_db, "msg": msg_db},
-        "motor": {"ok": ok_motor, "msg": msg_motor},
-        "pg": {"ok": ok_pg, "msg": msg_pg},
-    }), status
+    # A producció no exposem els missatges d'error interns (poden filtrar
+    # informació sobre la BD/configuració). Cal posar EXPOSE_HEALTH_DETAIL=true
+    # al .env per a recuperar els missatges (només per a depuració local).
+    expose_detail = (os.environ.get("EXPOSE_HEALTH_DETAIL", "").strip().lower()
+                     in ("1", "true", "yes"))
+    body = {
+        "ok": ok_db and ok_motor and ok_pg,
+        "db": {"ok": ok_db},
+        "motor": {"ok": ok_motor},
+        "pg": {"ok": ok_pg},
+    }
+    if expose_detail:
+        body["db"]["msg"] = msg_db
+        body["motor"]["msg"] = msg_motor
+        body["pg"]["msg"] = msg_pg
+    return jsonify(body), status
 
 
 if __name__ == "__main__":

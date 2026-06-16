@@ -36,7 +36,21 @@ function toast(type, msg) {
     setTimeout(() => el.remove(), 3500);
 }
 
-async function fetchJ(url, opts) {
+function getCsrfTok() {
+    const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+}
+
+async function fetchJ(url, opts = {}) {
+    const method = (opts.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+        const tok = getCsrfTok();
+        if (tok) {
+            const headers = new Headers(opts.headers || {});
+            if (!headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", tok);
+            opts = { ...opts, headers };
+        }
+    }
     const r = await fetch(url, opts);
     if (!r.ok) {
         let err = `HTTP ${r.status}`;

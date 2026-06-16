@@ -54,6 +54,42 @@ CREATE INDEX IF NOT EXISTS idx_agrupacio_carregues_carrega ON agrupacio_carregue
 CREATE INDEX IF NOT EXISTS idx_agrupacio_carregues_tra     ON agrupacio_carregues (tra_codi);
 
 -- ---------------------------------------------------------------------------
+-- Usuaris locals (Phase D de seguretat). Login via password_hash PBKDF2-SHA256.
+-- Rol controla l'accés a recursos d'administració. `actiu = FALSE` bloqueja
+-- el login sense haver d'esborrar la fila (conservem audit history).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS usuaris (
+    id            SERIAL       PRIMARY KEY,
+    username      TEXT         NOT NULL UNIQUE,
+    password_hash TEXT         NOT NULL,
+    nom           TEXT         NOT NULL,
+    rol           TEXT         NOT NULL DEFAULT 'oficina',  -- 'admin' | 'oficina' | 'magatzem'
+    actiu         BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    last_login_at TIMESTAMPTZ
+);
+
+-- ---------------------------------------------------------------------------
+-- Audit log: registre d'accions importants (escriptures) per a traçabilitat.
+-- Cada fila és una acció executada per un usuari (o NULL si encara no hi ha
+-- autenticació). El camp detall és JSONB per a flexibilitat futura.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id        BIGSERIAL    PRIMARY KEY,
+    ts        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    user_id   INTEGER,
+    user_name TEXT,
+    ip        INET,
+    accio     TEXT         NOT NULL,
+    target    TEXT,
+    detall    JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_ts    ON audit_logs (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_accio ON audit_logs (accio);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user  ON audit_logs (user_id) WHERE user_id IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
 -- Vista: una agrupació es considera "finalitzada" quan tots els productes
 -- del resultat ja estan marcats com preparats.
 -- ---------------------------------------------------------------------------

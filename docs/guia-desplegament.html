@@ -67,6 +67,7 @@
         <li><a href="#servei">Servei systemd amb Gunicorn</a></li>
         <li><a href="#apache">Apache VirtualHost (proxy invers)</a></li>
         <li><a href="#xarxa">Xarxa, DNS i tallafocs</a></li>
+        <li><a href="#seguretat">Seguretat (auth, CSRF, audit, rate-limit)</a></li>
         <li><a href="#backup">C&ograve;pia de seguretat (PostgreSQL)</a></li>
         <li><a href="#verificacio">Llista de verificaci&oacute;</a></li>
         <li><a href="#manteniment">Manteniment i actualitzacions</a></li>
@@ -233,14 +234,17 @@ odbcinst -q -d         # Ha de mostrar: [ODBC Driver 18 for SQL Server]</code></
 <pre><code>sudo -u postgres psql &lt;&lt;EOF
 CREATE DATABASE agrupaciocarregues;
 CREATE USER app_agrupacions WITH PASSWORD 'CANVIAR_CONTRASENYA_SEGURA';
-GRANT ALL PRIVILEGES ON DATABASE agrupaciocarregues TO app_agrupacions;
+GRANT CONNECT ON DATABASE agrupaciocarregues TO app_agrupacions;
 
 \c agrupaciocarregues
 ALTER DATABASE agrupaciocarregues OWNER TO app_agrupacions;
 ALTER SCHEMA public OWNER TO app_agrupacions;
-GRANT ALL ON SCHEMA public TO app_agrupacions;
-GRANT CREATE ON SCHEMA public TO app_agrupacions;
+GRANT USAGE, CREATE ON SCHEMA public TO app_agrupacions;
 EOF</code></pre>
+
+<div class="info">
+    <strong>Principi de m&iacute;nim privilegi:</strong> <code>app_agrupacions</code> &eacute;s propietari de l'esquema <code>public</code> perqu&egrave; ha de crear les seves taules (<code>schema.sql</code> al pas 6.6). Despr&eacute;s del setup, podeu opcionalment revocar <code>CREATE</code> i deixar nom&eacute;s <code>SELECT/INSERT/UPDATE/DELETE</code> a les taules existents. Mai cal <code>SUPERUSER</code> ni acc&eacute;s a altres bases de dades del cluster.
+</div>
 
 <div class="warning">
     <strong>IMPORTANT (PostgreSQL 15+):</strong> L'esquema <code>public</code> no &eacute;s escrivible per defecte encara que es tinguin <code>ALL PRIVILEGES</code> sobre la base de dades. Cal canviar-ne el propietari (<code>ALTER SCHEMA public OWNER</code>) i donar <code>CREATE</code>. Si no, la c&agrave;rrega del schema fallar&agrave; amb <code>permission denied for schema public</code>.
@@ -293,7 +297,20 @@ PG_POOL_MIN=1
 PG_POOL_MAX=5
 
 # --- Ruta al motor d'embalatges (app germana Comandes Venda) ---
-PREPARACIO_PATH=/var/www/comandes-venda</code></pre>
+PREPARACIO_PATH=/var/www/comandes-venda
+
+# --- Power BI (endpoint /api/pbi/carregues) ---
+# Genera-la amb: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+PBI_API_KEY=&lt;clau_pbi&gt;
+
+# --- Autenticació (Phase D de seguretat) ---
+AUTH_ENABLED=true
+# Secret per a signar les cookies de sessió (OBLIGATORI a producció).
+# Genera-la amb: python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+FLASK_SECRET_KEY=&lt;secret_long_aleatori&gt;
+
+# --- Health endpoint (manté false en producció) ---
+EXPOSE_HEALTH_DETAIL=false</code></pre>
 
 <div class="warning">
     <strong>Port SQL Server:</strong> El servidor SQL utilitza el port <strong>50058</strong> (no el port est&agrave;ndard 1433). &Eacute;s imprescindible incloure el port a <code>SQL_SERVER</code> separat per coma.
@@ -339,9 +356,24 @@ sudo -u www-data venv/bin/pip install gunicorn</code></pre>
 <pre><code>cd /var/www/agrupacio-carregues
 psql -U app_agrupacions -d agrupaciocarregues -h localhost -f db/schema.sql
 # Demanar&agrave; la contrasenya de app_agrupacions.
-# Hauria de crear: agrupacions, productes_preparats, agrupacio_carregues, v_agrupacions_estat</code></pre>
+# Crea: agrupacions, productes_preparats, agrupacio_carregues, v_agrupacions_estat,
+#       audit_logs i usuaris.</code></pre>
 
-<h3>6.7 Verificar connexions a les dues BDs</h3>
+<h3>6.7 Crear el primer usuari administrador (si AUTH_ENABLED=true)</h3>
+<p>Si activeu l'autenticaci&oacute;, cal crear el primer usuari administrador <strong>abans</strong> d'iniciar el servei (si no, ning&uacute; podr&agrave; entrar). El script demana usuari + contrasenya per stdin:</p>
+<pre><code>cd /var/www/agrupacio-carregues
+sudo -u www-data venv/bin/python scripts/crear_admin.py
+# Input:
+#   Username: admin
+#   Nom complet: Administrador
+#   Contrasenya: ********  (m&iacute;nim 8 car&agrave;cters)
+#   Repeteix-la: ********</code></pre>
+
+<div class="info">
+    <strong>Rols disponibles:</strong> <code>admin</code> (per defecte), <code>oficina</code>, <code>magatzem</code>. La distinci&oacute; per rol s'aplicar&agrave; en versions futures; ara mateix tots tres tenen el mateix acc&eacute;s.
+</div>
+
+<h3>6.8 Verificar connexions a les dues BDs</h3>
 <pre><code>cd /var/www/agrupacio-carregues
 
 # 1) Connexi&oacute; a SQL Server
@@ -515,8 +547,60 @@ sudo ufw allow OpenSSH    # Si no est&agrave; obert</code></pre>
 Nom:   agrupacions.agrienergia.local
 Valor: &lt;IP-DEL-SERVIDOR&gt;     # mateix que les altres apps</code></pre>
 
-<!-- 11. BACKUP -->
-<h2 id="backup">11. C&ograve;pia de seguretat (PostgreSQL)</h2>
+<!-- NOVA: SEGURETAT -->
+<h2 id="seguretat">11. Seguretat</h2>
+
+<p>L'app aplica diverses capes de seguretat. Resum:</p>
+
+<table>
+    <tr><th>Capa</th><th>Mecanisme</th><th>Variable d'entorn</th></tr>
+    <tr><td>Autenticaci&oacute; web</td><td>Usuaris locals a PostgreSQL (taula <code>usuaris</code>) amb sessions per cookie signada</td><td><code>AUTH_ENABLED=true</code> + <code>FLASK_SECRET_KEY</code></td></tr>
+    <tr><td>CSRF</td><td>Double-submit cookie autom&agrave;tic per a <code>PATCH/POST/DELETE</code> a <code>/api/agrupacions/*</code></td><td>(cap)</td></tr>
+    <tr><td>Rate-limit</td><td>30 req/min/IP a <code>/api/pbi/carregues</code>; 5 intents/min/IP a <code>/login</code></td><td>(cap)</td></tr>
+    <tr><td>Audit log</td><td>Taula <code>audit_logs</code> a PostgreSQL: registra login OK/fallit, logout, desar/eliminar agrupaci&oacute;, marcar/desmarcar producte</td><td>(cap)</td></tr>
+    <tr><td>API key PBI</td><td>Header <code>X-Api-Key</code> obligatori a <code>/api/pbi/*</code></td><td><code>PBI_API_KEY</code></td></tr>
+    <tr><td>Headers HTTP</td><td><code>X-Content-Type-Options</code>, <code>X-Frame-Options: DENY</code>, <code>Referrer-Policy</code>, CSP <code>script-src 'self'</code></td><td>(cap)</td></tr>
+    <tr><td>Health endpoint</td><td>No exposa missatges d'error interns a producci&oacute;</td><td><code>EXPOSE_HEALTH_DETAIL=false</code></td></tr>
+</table>
+
+<h3>11.1 Consultar el log d'auditoria</h3>
+<pre><code>psql -U app_agrupacions -d agrupaciocarregues -h localhost &lt;&lt;EOF
+-- &Uacute;ltimes 50 accions
+SELECT ts, user_name, ip, accio, target FROM audit_logs ORDER BY ts DESC LIMIT 50;
+
+-- Logins fallits de l'&uacute;ltima setmana
+SELECT ts, ip, target FROM audit_logs
+WHERE  accio = 'login_fallit' AND ts &gt; NOW() - INTERVAL '7 days'
+ORDER BY ts DESC;
+
+-- Agrupacions eliminades per usuari
+SELECT user_name, COUNT(*) FROM audit_logs
+WHERE accio = 'agrupacio_eliminada' GROUP BY user_name;
+EOF</code></pre>
+
+<h3>11.2 Gestionar usuaris</h3>
+<pre><code># Crear un usuari nou (interactiu)
+sudo -u www-data venv/bin/python scripts/crear_admin.py \
+                --username operario1 --nom "Operari 1" --rol oficina
+
+# Desactivar un usuari (sense esborrar — manté la traçabilitat)
+psql -U app_agrupacions -d agrupaciocarregues -h localhost \
+     -c "UPDATE usuaris SET actiu = FALSE WHERE username = 'operario1';"
+
+# Canviar contrasenya d'un usuari (genera el hash amb Python):
+sudo -u www-data venv/bin/python -c "
+import os
+os.environ.setdefault('PG_HOST', 'localhost')
+import auth, db
+db.execute(
+    'UPDATE usuaris SET password_hash = %s WHERE username = %s',
+    (auth.hash_password('nova_contrasenya'), 'operario1')
+)
+print('OK')
+"</code></pre>
+
+<!-- 12. BACKUP -->
+<h2 id="backup">12. C&ograve;pia de seguretat (PostgreSQL)</h2>
 
 <p>Les agrupacions desades viuen a la BD local <code>agrupaciocarregues</code>. Recomanem un backup diari amb retenci&oacute; de 30 dies, igual que la resta d'apps amb PostgreSQL:</p>
 
@@ -540,7 +624,7 @@ sudo nano /etc/cron.d/agrupacio-carregues-backup</code></pre>
 </div>
 
 <!-- 12. VERIFICACIÓ -->
-<h2 id="verificacio">12. Llista de verificaci&oacute;</h2>
+<h2 id="verificacio">13. Llista de verificaci&oacute;</h2>
 
 <p>Executar totes les comprovacions abans de donar per finalitzat el desplegament:</p>
 <table>
@@ -581,7 +665,7 @@ telnet vkais 50058
 # Ha de connectar (no "Connection refused")</code></pre>
 
 <!-- 13. MANTENIMENT -->
-<h2 id="manteniment">13. Manteniment i actualitzacions</h2>
+<h2 id="manteniment">14. Manteniment i actualitzacions</h2>
 
 <h3>13.1 Actualitzar l'aplicaci&oacute;</h3>
 <p>Quan hi hagi una nova versi&oacute; al repositori GitHub:</p>
@@ -622,7 +706,7 @@ curl http://localhost:50004/health</code></pre>
 }</code></pre>
 
 <!-- 14. LOGS -->
-<h2 id="logs">14. Logs i monitoratge</h2>
+<h2 id="logs">15. Logs i monitoratge</h2>
 
 <table>
     <tr><th>Fitxer / Comanda</th><th>Contingut</th></tr>
@@ -644,7 +728,7 @@ journalctl -u agrupacio-carregues -f --no-pager
 tail -f /var/log/apache2/agrupacio-carregues-error.log</code></pre>
 
 <!-- 15. TROUBLESHOOTING -->
-<h2 id="troubleshooting">15. Resoluci&oacute; de problemes</h2>
+<h2 id="troubleshooting">16. Resoluci&oacute; de problemes</h2>
 
 <table>
     <tr><th>Problema</th><th>Causa probable</th><th>Soluci&oacute;</th></tr>
@@ -662,7 +746,7 @@ tail -f /var/log/apache2/agrupacio-carregues-error.log</code></pre>
 </table>
 
 <!-- 16. RESUM -->
-<h2 id="resum">16. Resum i temps estimats</h2>
+<h2 id="resum">17. Resum i temps estimats</h2>
 
 <p>Temps estimats assumint que Lab FC, Comandes Venda i Visites ja s&oacute;n al servidor (Python, Apache, ODBC 18, PostgreSQL, UFW ja configurats):</p>
 

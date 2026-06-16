@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entrar · Agrupador de Càrregues</title>
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <style>
+        body.login-page { background: var(--gray-50); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .login-card { background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 2rem 2.25rem; width: min(360px, 92vw); }
+        .login-card h1 { margin: 0 0 .5rem; font-size: 1.25rem; color: var(--primary-dark); }
+        .login-card .subtitle { color: var(--gray-500); font-size: .85rem; margin: 0 0 1.5rem; }
+        .login-card label { font-weight: 600; font-size: .8rem; color: var(--gray-700); text-transform: uppercase; letter-spacing: .04em; display: block; margin: .85rem 0 .3rem; }
+        .login-card input { width: 100%; padding: .55rem .75rem; border: 1.5px solid var(--gray-200); border-radius: var(--radius-md); font-size: .95rem; background: #fff; color: var(--gray-900); }
+        .login-card input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(44, 82, 130, .15); }
+        .login-card .btn-login { width: 100%; padding: .65rem 1rem; margin-top: 1.25rem; background: var(--primary); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: .95rem; cursor: pointer; }
+        .login-card .btn-login:hover { background: var(--primary-dark); }
+        .login-card .err { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger); padding: .55rem .85rem; border-radius: var(--radius-md); margin-bottom: 1rem; font-size: .85rem; }
+        .login-card .footer { margin-top: 1.5rem; padding-top: .85rem; border-top: 1px solid var(--gray-100); color: var(--gray-500); font-size: .75rem; text-align: center; }
+    </style>
+</head>
+<body class="login-page">
+<form class="login-card" method="POST" action="{{ url_for('login') }}">
+    <h1>Agrupador de Càrregues</h1>
+    <p class="subtitle">Entrar amb usuari i contrasenya.</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <input type="hidden" name="next" value="{{ next_path or '' }}">
+    <label for="username">Usuari</label>
+    <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+    <label for="password">Contrasenya</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" required>
+    <button type="submit" class="btn-login">Entra</button>
+    <div class="footer">Farinera Coromina · Grup AE 1897</div>
+</form>
+</body>
+</html>

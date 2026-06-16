@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
     <link rel="stylesheet" href="{{ static_url('css/magatzem.css') }}" media="print">
 </head>
-<body>
+<body data-focus-carrega="{{ focus_carrega or '' }}">
 
 <header class="app-header">
     <div class="container header-row">
@@ -16,6 +16,12 @@
             <p class="subtitle">Sumatori d'embalatges de múltiples càrregues per producte</p>
         </div>
         <div class="header-help">
+            {% if current_user %}
+            <span class="header-user" title="{{ current_user.username }} · {{ current_user.rol }}">👤 {{ current_user.nom }}</span>
+            <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+                <button type="submit" class="btn btn-icon" title="Tanca sessió" aria-label="Tanca sessió">⎋</button>
+            </form>
+            {% endif %}
             <a href="/calendari" class="btn btn-icon" title="Calendari mensual" aria-label="Calendari" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">📅</a>
             <button type="button" id="btn-agrupacions-desades" class="btn btn-icon" title="Agrupacions desades" aria-label="Agrupacions desades">★</button>
             <a href="/ajuda" target="_blank" rel="noopener" class="btn btn-icon" title="Ajuda completa" aria-label="Ajuda" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">?</a>
@@ -227,7 +233,6 @@
 
 </main>
 
-<script>window.__FOCUS_CARREGA__ = {{ (focus_carrega or '')|tojson }};</script>
 <script src="{{ static_url('js/fmt.js') }}"></script>
 <script src="{{ static_url('js/palets.js') }}"></script>
 <script src="{{ static_url('js/dialogs.js') }}"></script>

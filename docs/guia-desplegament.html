@@ -432,19 +432,21 @@ sudo -u www-data venv/bin/python -c "from app import app; app.run(host='127.0.0.
 <h3>7.2 Provar des d'un altre terminal</h3>
 <pre><code># Health check (cont&eacute; estat de les dues BDs i del motor)
 curl http://localhost:50004/health
-# Hauria de retornar JSON com:
-# {"db": {"ok": true, "msg": ""},
-#  "pg": {"ok": true, "msg": ""},
-#  "motor": {"ok": true, "msg": ""}}
+# Hauria de retornar JSON amb tots tres ok:true:
+# {"db":{"ok":true},"motor":{"ok":true},"ok":true,"pg":{"ok":true}}
 
 # P&agrave;gina principal
 curl -I http://localhost:50004/
-# Hauria de retornar HTTP/1.1 200 OK
+# Amb AUTH_ENABLED=true (recomanat en producci&oacute;) → HTTP/1.1 302 FOUND
+# amb Location: /login?next=/ (no &eacute;s un error, &eacute;s el redirect normal al login).
+# Amb AUTH_ENABLED=false → HTTP/1.1 200 OK.
 
 # Aturar el python amb Ctrl+C</code></pre>
 
 <div class="info">
-    Si <code>health</code> retorna <code>motor.ok = false</code>, comprovar que <code>PREPARACIO_PATH</code> apunta a un directori on existeix <code>motor.py</code> i que Comandes Venda est&agrave; ben desplegada.
+    Si <code>health</code> retorna <code>motor.ok = false</code>, comprovar que <code>PREPARACIO_PATH</code> apunta a un directori on existeix <code>motor.py</code> i que Comandes Venda est&agrave; ben desplegada. Diagnostic detallat:
+    <pre style="margin-top:.5rem;"><code>ls /var/www/comandes-venda/motor.py     # ha d'existir
+sudo -u www-data venv/bin/python -c "import app; import motor; print(motor.calcular_embalatges)"</code></pre>
 </div>
 
 <!-- 8. SERVEI SYSTEMD -->

@@ -612,6 +612,26 @@
     color: #2c7a7b;
 }
 
+/* Bloc AGRI (rang=1) — to vermellós suau */
+.cal-evt[data-rang="1"]:not(.is-no-palletitzable):not([data-tipus="granel"]) {
+    background: #fee2e2;
+    color: #7f1d1d;
+}
+.cal-evt[data-rang="1"]:not(.is-no-palletitzable):not([data-tipus="granel"]):hover {
+    background: #b91c1c;
+    color: #fff;
+}
+
+/* Bloc Mª Soledad López (rang=2) — to lavanda suau */
+.cal-evt[data-rang="2"]:not(.is-no-palletitzable):not([data-tipus="granel"]) {
+    background: #ede9fe;
+    color: #4c1d95;
+}
+.cal-evt[data-rang="2"]:not(.is-no-palletitzable):not([data-tipus="granel"]):hover {
+    background: #6d28d9;
+    color: #fff;
+}
+
 /* --- Secció cap de setmana (sorra suau, integrat amb el sistema) ---- */
 .cal-capsetmana {
     margin-top: 1.5rem;

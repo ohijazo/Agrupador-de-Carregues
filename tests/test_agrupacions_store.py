@@ -205,7 +205,8 @@ def test_guardar_sense_plantilla_no_te_meta(store_tmp):
     info = agrupacions_store.guardar("Normal", [_carrega()], _resultat(), plantilla=False)
     obj = agrupacions_store.obtenir(info["id"])
     assert obj.get("plantilla") is False
-    assert "plantilla_meta" not in obj
+    # `plantilla_meta` és None per a agrupacions normals (no plantilles)
+    assert obj.get("plantilla_meta") is None
 
 
 def test_llistar_plantilles_nomes_les_marcades(store_tmp):

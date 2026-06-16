@@ -60,7 +60,7 @@ def store_tmp(monkeypatch):
 def pytest_collection_modifyitems(config, items):
     if os.environ.get("PG_HOST"):
         return
-    needs_pg_modules = {"test_agrupacions_store", "test_endpoints"}
+    needs_pg_modules = {"test_agrupacions_store", "test_endpoints", "test_csrf", "test_admin", "test_polling"}
     skip_marker = pytest.mark.skip(reason="PG_HOST no configurat")
     for item in items:
         module = item.module.__name__.rsplit(".", 1)[-1] if hasattr(item, "module") else ""

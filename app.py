@@ -111,6 +111,30 @@ def _inject_auth_context():
     }
 
 
+# --- Slow request logging ------------------------------------------------
+# Detecta peticions lentes (>500ms) per a poder identificar colls d'ampolla
+# sense activar profiling complet. El llindar es pot ajustar amb la variable
+# d'entorn SLOW_REQUEST_MS (per defecte 500 = 0.5s).
+@app.before_request
+def _slow_request_start():
+    request._start_time = time.monotonic()
+
+
+@app.after_request
+def _slow_request_log(resp):
+    try:
+        elapsed_ms = (time.monotonic() - request._start_time) * 1000
+        threshold = int(os.environ.get("SLOW_REQUEST_MS", "500"))
+        if elapsed_ms >= threshold:
+            log.warning(
+                "slow request: %d ms · %s %s · status=%d",
+                int(elapsed_ms), request.method, request.path, resp.status_code,
+            )
+    except Exception:
+        pass
+    return resp
+
+
 # --- Headers de seguretat ------------------------------------------------
 @app.after_request
 def secure_headers(resp):
@@ -146,6 +170,10 @@ def _csrf_required(path: str, method: str) -> bool:
 
 @app.before_request
 def _csrf_check():
+    # Hook escapada per a tests existents que no envien CSRF token
+    # (set explícitament app.config["CSRF_ENABLED"] = False per saltar el check).
+    if app.config.get("CSRF_ENABLED", True) is False:
+        return None
     if not _csrf_required(request.path, request.method):
         return None
     cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
@@ -191,27 +219,20 @@ def _rate_limit(key: str, max_req: int, window_sec: int) -> bool:
 
 
 # --- Helpers d'errors estandarditzats ------------------------------------
-def _err_validacio(msg: str):
-    return jsonify({"error": msg}), 400
-
-
-def _err_db():
-    return jsonify({"error": "Error de connexió amb la base de dades. Torna-ho a provar."}), 503
-
-
-def _err_motor():
-    return jsonify({"error": "El motor d'embalatges no està disponible. Contacta amb administració."}), 503
-
-
-def _err_genèric():
-    return jsonify({"error": "S'ha produït un error inesperat."}), 500
+# Definicions reals a `errors.py` (perquè es puguin importar des d'altres
+# mòduls sense imports circulars amb `app.py`). Aquí mantenim els noms
+# `_err_*` com a alias per no trencar les ~60 crides existents.
+from errors import err_validacio as _err_validacio  # noqa: E402
+from errors import err_db as _err_db  # noqa: E402
+from errors import err_motor as _err_motor  # noqa: E402
+from errors import err_generic as _err_genèric  # noqa: E402
 
 
 # --- Autenticació: middleware + endpoints --------------------------------
 # Si `AUTH_ENABLED=true` al .env, tots els endpoints excepte els llistats a
 # `_AUTH_PUBLIC_PREFIXES` requereixen sessió. Per a `/api/*` retorna 401
 # (JSON); per a la resta redirigeix a /login.
-_AUTH_PUBLIC_PREFIXES = ("/login", "/logout", "/static", "/health", "/api/pbi")
+_AUTH_PUBLIC_PREFIXES = ("/login", "/logout", "/static", "/health", "/api/pbi", "/api/me")
 
 
 @app.before_request
@@ -339,8 +360,18 @@ def api_admin_usuaris_crear():
     except ValueError as e:
         return _err_validacio(str(e))
     except Exception as e:
-        msg = str(e).lower()
-        if "duplicate" in msg or "unique" in msg or "ja existeix" in msg:
+        # Captura UniqueViolation (independent del missatge en l'idioma del cluster PG)
+        is_dup = False
+        try:
+            import psycopg.errors
+            is_dup = isinstance(e, psycopg.errors.UniqueViolation) or \
+                     isinstance(getattr(e, "__cause__", None), psycopg.errors.UniqueViolation)
+        except Exception:
+            pass
+        if not is_dup:
+            msg = str(e).lower()
+            is_dup = any(s in msg for s in ("duplicate", "unique", "unicidad", "unicitat", "ja existeix"))
+        if is_dup:
             return jsonify({"error": f"L'usuari '{username}' ja existeix."}), 409
         log.exception("admin_usuaris crear")
         return _err_genèric()
@@ -729,6 +760,18 @@ def api_pbi_carregues():
         return _err_validacio(err)
     desde_d, fins_d = rang
 
+    # Hard limit defensiu: no permetem dumps de més de 5000 files en una sola
+    # petició, ni rangs de >730 dies. Si Power BI necessita anys d'historial,
+    # ho ha de fer en peticions trossejades per any. Aquest cap evita timeouts
+    # i pics de memòria al servidor.
+    PBI_MAX_FILES = int(os.environ.get("PBI_MAX_FILES", "5000"))
+    PBI_MAX_DIES = 730
+    if (fins_d - desde_d).days > PBI_MAX_DIES:
+        return _err_validacio(
+            f"Rang massa ampli (max {PBI_MAX_DIES} dies). "
+            f"Fes peticions trossejades per any."
+        )
+
     # Paginació interna: llistar_carregues té un cap de 1000 per request,
     # però per a Power BI hem de retornar tot el rang sencer.
     items = []
@@ -745,6 +788,13 @@ def api_pbi_carregues():
             total = resp.get("total", 0)
             offset += PAS
             if offset >= total or not batch:
+                break
+            if len(items) >= PBI_MAX_FILES:
+                log.warning(
+                    "pbi/carregues: rang massa gran (%d files), tallant a %d",
+                    total, PBI_MAX_FILES,
+                )
+                items = items[:PBI_MAX_FILES]
                 break
     except pyodbc.Error:
         log.exception("DB error a pbi/carregues")

@@ -26,11 +26,15 @@ sys.modules.setdefault("models", _models)
 
 @pytest.fixture
 def client(store_tmp):
-    """test_client de Flask amb la BD ja netejada per la fixture compartida."""
+    """test_client de Flask amb la BD ja netejada per la fixture compartida.
+    Desactivem CSRF perquè aquests tests no l'envien — el comportament CSRF
+    queda cobert per test_csrf.py específicament."""
     import app as app_module
     app_module.app.config["TESTING"] = True
+    app_module.app.config["CSRF_ENABLED"] = False
     with app_module.app.test_client() as c:
         yield c
+    app_module.app.config.pop("CSRF_ENABLED", None)
 
 
 def _carrega(cid="2026/01/0000001"):

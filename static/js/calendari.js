@@ -435,20 +435,24 @@
                     if (kgTotal > 0) {
                         const kgBox = document.createElement("div");
                         kgBox.className = "cal-cell-kgs";
+                        const span = (cls, lbl, val, tip) =>
+                            `<span class="cal-kg-line ${cls}" title="${tip}">` +
+                            (lbl ? `<span class="cal-kg-lbl">${lbl}</span>` : "") +
+                            `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(val))} Kg</span></span>`;
+                        const op = (txt) => `<span class="cal-kg-op">${txt}</span>`;
                         const parts = [];
-                        if (kgGra > 0) {
-                            parts.push(`<span class="cal-kg-line is-gra" title="Total kg granel: ${fmtKg2.format(kgGra)} kg">` +
-                                       `<span class="cal-kg-lbl">GRA</span>` +
-                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgGra))}</span></span>`);
+                        if (kgGra > 0 && kgSacs > 0) {
+                            // GRA + SACS = TOTAL
+                            parts.push(span("is-gra", "GRA", kgGra, `Granel: ${fmtKg2.format(kgGra)} kg`));
+                            parts.push(op("+"));
+                            parts.push(span("is-sacs", "SACS", kgSacs, `Sacs: ${fmtKg2.format(kgSacs)} kg`));
+                            parts.push(op("="));
+                            parts.push(span("is-total", "", kgTotal, `Total: ${fmtKg2.format(kgTotal)} kg`));
+                        } else if (kgGra > 0) {
+                            parts.push(span("is-gra", "GRA", kgGra, `Granel: ${fmtKg2.format(kgGra)} kg`));
+                        } else {
+                            parts.push(span("is-sacs", "SACS", kgSacs, `Sacs: ${fmtKg2.format(kgSacs)} kg`));
                         }
-                        if (kgSacs > 0) {
-                            parts.push(`<span class="cal-kg-line is-sacs" title="Total kg sacs: ${fmtKg2.format(kgSacs)} kg">` +
-                                       `<span class="cal-kg-lbl">SACS</span>` +
-                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgSacs))}</span></span>`);
-                        }
-                        parts.push(`<span class="cal-kg-line is-total" title="Total kg: ${fmtKg2.format(kgTotal)} kg">` +
-                                   `<span class="cal-kg-lbl">Total</span>` +
-                                   `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgTotal))} Kg</span></span>`);
                         kgBox.innerHTML = parts.join("");
                         cell.appendChild(kgBox);
                     }

@@ -481,16 +481,16 @@
 }
 
 /* Desglossament Kg al peu del dia: una sola fila SEMPRE.
-   Format: "GRA 23.780 · SACS 45.320 · Total 69.100 Kg".
-   Només el Total porta el sufix " Kg" — així cabem a la cel·la sense salt. */
+   Format quan hi ha tots dos: "GRA 23.780 Kg + SACS 154.190 Kg = 177.970 Kg".
+   Quan només n'hi ha un, només es mostra aquell. */
 .cal-cell-kgs {
     margin-top: auto;        /* empenta al peu de la cel·la */
     padding-top: .35rem;
     border-top: 1px solid var(--gray-200);
     display: flex;
-    flex-wrap: nowrap;       /* mai salta a una segona línia */
+    flex-wrap: nowrap;
     align-items: baseline;
-    gap: 0;
+    gap: .25rem;
     font-size: .62rem;
     font-variant-numeric: tabular-nums;
     line-height: 1.2;
@@ -502,10 +502,9 @@
     gap: .2rem;
     white-space: nowrap;
 }
-.cal-kg-line + .cal-kg-line::before {
-    content: "·";
-    margin: 0 .35rem;
+.cal-kg-op {
     color: var(--gray-400);
+    font-weight: 600;
 }
 .cal-kg-line .cal-kg-lbl {
     font-weight: 600;
@@ -519,7 +518,6 @@
 }
 .cal-kg-line.is-gra .cal-kg-lbl,
 .cal-kg-line.is-gra .cal-kg-val { color: #2c7a7b; }
-.cal-kg-line.is-total .cal-kg-lbl,
 .cal-kg-line.is-total .cal-kg-val {
     font-weight: 700;
     color: var(--gray-900);

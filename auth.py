@@ -102,6 +102,69 @@ def actualitza_last_login(user_id: int) -> None:
         log.warning("No s'ha pogut actualitzar last_login_at: %s", str(e)[:200])
 
 
+def llistar_usuaris() -> list[dict]:
+    return [dict(r) for r in db.fetch_all(
+        """
+        SELECT id, username, nom, rol, actiu, created_at, last_login_at
+        FROM usuaris
+        ORDER BY actiu DESC, username
+        """
+    )]
+
+
+def obtenir_usuari(id_: int) -> dict | None:
+    r = db.fetch_one(
+        """
+        SELECT id, username, nom, rol, actiu, created_at, last_login_at
+        FROM usuaris WHERE id = %s
+        """,
+        (id_,),
+    )
+    return dict(r) if r else None
+
+
+def actualitzar_usuari(id_: int, nom: str | None = None, rol: str | None = None,
+                       actiu: bool | None = None) -> dict | None:
+    """Actualitza camps mutables. Retorna l'usuari actualitzat o None si no existeix."""
+    sets, params = [], []
+    if nom is not None:
+        nom = nom.strip()
+        if not nom:
+            raise ValueError("nom buit")
+        sets.append("nom = %s")
+        params.append(nom)
+    if rol is not None:
+        if rol not in ("admin", "oficina", "magatzem"):
+            raise ValueError(f"rol invàlid: {rol}")
+        sets.append("rol = %s")
+        params.append(rol)
+    if actiu is not None:
+        sets.append("actiu = %s")
+        params.append(bool(actiu))
+    if not sets:
+        return obtenir_usuari(id_)
+    params.append(id_)
+    db.execute(f"UPDATE usuaris SET {', '.join(sets)} WHERE id = %s", tuple(params))
+    audit.log(
+        "usuari_actualitzat",
+        target=str(id_),
+        detall={"nom": nom, "rol": rol, "actiu": actiu},
+    )
+    return obtenir_usuari(id_)
+
+
+def canvi_contrasenya(id_: int, nova: str) -> bool:
+    """Reseteja la contrasenya d'un usuari. Retorna True si OK."""
+    if not nova or len(nova) < 8:
+        raise ValueError("la contrasenya ha de tenir com a mínim 8 caràcters")
+    h = hash_password(nova)
+    rows = db.execute("UPDATE usuaris SET password_hash = %s WHERE id = %s", (h, id_))
+    if rows:
+        audit.log("password_reset", target=str(id_))
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Decoradors
 # ---------------------------------------------------------------------------

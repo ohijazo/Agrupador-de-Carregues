@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administració d'usuaris · Agrupador</title>
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/admin.css') }}">
+</head>
+<body>
+
+<header class="app-header">
+    <div class="container header-row">
+        <div>
+            <h1>Administració d'usuaris</h1>
+            <p class="subtitle">Crear, editar i desactivar comptes locals</p>
+        </div>
+        <div class="header-help">
+            {% if current_user %}
+            <span class="header-user" title="{{ current_user.username }} · {{ current_user.rol }}">👤 {{ current_user.nom }}</span>
+            <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+                <button type="submit" class="btn btn-icon" title="Tanca sessió" aria-label="Tanca sessió">⎋</button>
+            </form>
+            {% endif %}
+            <a href="/" class="btn btn-icon" title="Tornar a l'app" aria-label="Inici" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">←</a>
+        </div>
+    </div>
+</header>
+
+<main class="container admin-main">
+    <section class="panel">
+        <div class="panel-head">
+            <h2>Usuaris (<span id="usuaris-count">…</span>)</h2>
+            <button type="button" id="btn-nou-usuari" class="btn btn-primary">+ Nou usuari</button>
+        </div>
+        <div id="usuaris-error" class="alert-error" hidden></div>
+        <div class="table-wrap">
+            <table class="data-table" id="taula-usuaris">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Nom</th>
+                        <th>Rol</th>
+                        <th>Estat</th>
+                        <th>Creat</th>
+                        <th>Últim login</th>
+                        <th class="col-acc">Accions</th>
+                    </tr>
+                </thead>
+                <tbody><tr><td colspan="7" class="muted" style="text-align:center;padding:1.5rem;">Carregant…</td></tr></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<!-- Modal: crear/editar usuari -->
+<dialog id="dlg-usuari" class="app-dialog">
+    <article>
+        <header>
+            <h3 id="dlg-usuari-titol">Nou usuari</h3>
+            <button type="button" class="dialog-close" data-close aria-label="Tanca">×</button>
+        </header>
+        <form id="form-usuari" class="dlg-form">
+            <div class="field-row">
+                <label for="f-username">Username</label>
+                <input type="text" id="f-username" name="username" required pattern="[a-z0-9_.\-]{2,30}" autocomplete="off">
+                <small class="muted">Minúscules, números, _ . - (sense espais)</small>
+            </div>
+            <div class="field-row">
+                <label for="f-nom">Nom complet</label>
+                <input type="text" id="f-nom" name="nom" required maxlength="80">
+            </div>
+            <div class="field-row">
+                <label for="f-rol">Rol</label>
+                <select id="f-rol" name="rol">
+                    <option value="oficina">Oficina</option>
+                    <option value="magatzem">Magatzem</option>
+                    <option value="admin">Administrador</option>
+                </select>
+            </div>
+            <div class="field-row" id="field-password-row">
+                <label for="f-password">Contrasenya</label>
+                <input type="password" id="f-password" name="password" minlength="8" autocomplete="new-password">
+                <small class="muted">Mínim 8 caràcters. <span id="pwd-hint-create">Obligatori per crear l'usuari.</span></small>
+            </div>
+            <div class="field-row" id="field-actiu-row" hidden>
+                <label>
+                    <input type="checkbox" id="f-actiu" name="actiu">
+                    Compte actiu (pot iniciar sessió)
+                </label>
+            </div>
+            <div id="form-error" class="alert-error" hidden></div>
+            <footer class="dlg-footer">
+                <button type="button" class="btn btn-ghost" data-close>Cancel·la</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-usuari">Crear</button>
+            </footer>
+        </form>
+    </article>
+</dialog>
+
+<!-- Modal: canvi de contrasenya -->
+<dialog id="dlg-password" class="app-dialog">
+    <article>
+        <header>
+            <h3>Canvi de contrasenya — <span id="dlg-password-user"></span></h3>
+            <button type="button" class="dialog-close" data-close aria-label="Tanca">×</button>
+        </header>
+        <form id="form-password" class="dlg-form">
+            <div class="field-row">
+                <label for="f-new-password">Nova contrasenya</label>
+                <input type="password" id="f-new-password" name="password" minlength="8" required autocomplete="new-password">
+                <small class="muted">Mínim 8 caràcters.</small>
+            </div>
+            <div id="password-error" class="alert-error" hidden></div>
+            <footer class="dlg-footer">
+                <button type="button" class="btn btn-ghost" data-close>Cancel·la</button>
+                <button type="submit" class="btn btn-primary">Canvia contrasenya</button>
+            </footer>
+        </form>
+    </article>
+</dialog>
+
+<div id="toasts" class="toasts"></div>
+
+<script src="{{ static_url('js/admin_usuaris.js') }}"></script>
+</body>
+</html>

@@ -134,7 +134,7 @@ def secure_headers(resp):
 # fa qualsevol GET. El frontend la llegeix i la inclou a les peticions.
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
-_CSRF_PROTECTED_PREFIXES = ("/api/agrupacions",)
+_CSRF_PROTECTED_PREFIXES = ("/api/agrupacions", "/api/admin")
 _CSRF_EXEMPT_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
@@ -294,6 +294,97 @@ def api_me():
         "nom": session.get("user_name"),
         "rol": session.get("user_rol"),
     })
+
+
+# --- Admin: CRUD d'usuaris (rol admin) ---------------------------------
+@app.route("/admin/usuaris")
+@auth.requires_rol("admin")
+def admin_usuaris_page():
+    return render_template("admin_usuaris.html")
+
+
+@app.route("/api/admin/usuaris", methods=["GET"])
+@auth.requires_rol("admin")
+def api_admin_usuaris_llistar():
+    try:
+        items = auth.llistar_usuaris()
+        # Format ISO de timestamps per al frontend
+        for it in items:
+            for k in ("created_at", "last_login_at"):
+                if it.get(k) is not None:
+                    it[k] = it[k].isoformat()
+        return jsonify(items)
+    except Exception:
+        log.exception("admin_usuaris llistar")
+        return _err_genèric()
+
+
+@app.route("/api/admin/usuaris", methods=["POST"])
+@auth.requires_rol("admin")
+def api_admin_usuaris_crear():
+    body = request.get_json(silent=True) or {}
+    username = (body.get("username") or "").strip().lower()
+    nom = (body.get("nom") or "").strip()
+    rol = (body.get("rol") or "oficina").strip()
+    password = body.get("password") or ""
+    if not username or " " in username:
+        return _err_validacio("Username invàlid (no buit, sense espais).")
+    if not nom:
+        return _err_validacio("El nom és obligatori.")
+    if len(password) < 8:
+        return _err_validacio("La contrasenya ha de tenir com a mínim 8 caràcters.")
+    try:
+        user = auth.crear_usuari(username, password, nom, rol)
+        return jsonify({"id": user["id"], "username": user["username"], "rol": user["rol"]}), 201
+    except ValueError as e:
+        return _err_validacio(str(e))
+    except Exception as e:
+        msg = str(e).lower()
+        if "duplicate" in msg or "unique" in msg or "ja existeix" in msg:
+            return jsonify({"error": f"L'usuari '{username}' ja existeix."}), 409
+        log.exception("admin_usuaris crear")
+        return _err_genèric()
+
+
+@app.route("/api/admin/usuaris/<int:id_>", methods=["PATCH"])
+@auth.requires_rol("admin")
+def api_admin_usuaris_actualitzar(id_):
+    body = request.get_json(silent=True) or {}
+    # No deixar que un admin es desactivi a si mateix (evita lockout)
+    actiu = body.get("actiu")
+    if actiu is False and session.get("user_id") == id_:
+        return _err_validacio("No pots desactivar el teu propi compte.")
+    try:
+        user = auth.actualitzar_usuari(
+            id_,
+            nom=body.get("nom"),
+            rol=body.get("rol"),
+            actiu=actiu,
+        )
+        if not user:
+            return jsonify({"error": "Usuari no trobat."}), 404
+        return jsonify(user)
+    except ValueError as e:
+        return _err_validacio(str(e))
+    except Exception:
+        log.exception("admin_usuaris actualitzar")
+        return _err_genèric()
+
+
+@app.route("/api/admin/usuaris/<int:id_>/password", methods=["POST"])
+@auth.requires_rol("admin")
+def api_admin_usuaris_password(id_):
+    body = request.get_json(silent=True) or {}
+    nova = body.get("password") or ""
+    try:
+        if not auth.canvi_contrasenya(id_, nova):
+            return jsonify({"error": "Usuari no trobat."}), 404
+        return jsonify({"ok": True})
+    except ValueError as e:
+        return _err_validacio(str(e))
+    except Exception:
+        log.exception("admin_usuaris password")
+        return _err_genèric()
 
 
 @app.route("/")

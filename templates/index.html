@@ -18,6 +18,9 @@
         <div class="header-help">
             {% if current_user %}
             <span class="header-user" title="{{ current_user.username }} · {{ current_user.rol }}">👤 {{ current_user.nom }}</span>
+            {% if current_user.rol == 'admin' %}
+            <a href="/admin/usuaris" class="btn btn-icon" title="Administració d'usuaris" aria-label="Admin" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">⚙</a>
+            {% endif %}
             <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
                 <button type="submit" class="btn btn-icon" title="Tanca sessió" aria-label="Tanca sessió">⎋</button>
             </form>

@@ -406,7 +406,24 @@
                 }
                 cell.appendChild(head);
 
-                // Desglossament de kg sota el dia: GRA · SACS · Total
+                if (llista.length > 0) {
+                    const ul = document.createElement("ul");
+                    ul.className = "cal-cell-list";
+                    let rangAnt = null;
+                    for (const c of llista) {
+                        const liEvt = renderEvent(c, iso);
+                        const rang = rangSort(c);
+                        if (rangAnt !== null && rang !== rangAnt) {
+                            liEvt.classList.add("is-rang-break");
+                        }
+                        rangAnt = rang;
+                        ul.appendChild(liEvt);
+                    }
+                    cell.appendChild(ul);
+                }
+
+                // Desglossament Kg al peu del dia (després de la llista): una
+                // sola fila amb GRA · SACS · Total, cada valor seguit de "Kg".
                 if (llista.length > 0) {
                     let kgGra = 0, kgSacs = 0;
                     for (const c of llista) {
@@ -422,35 +439,19 @@
                         if (kgGra > 0) {
                             parts.push(`<span class="cal-kg-line is-gra" title="Total kg granel: ${fmtKg2.format(kgGra)} kg">` +
                                        `<span class="cal-kg-lbl">GRA</span>` +
-                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgGra))}</span></span>`);
+                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgGra))} Kg</span></span>`);
                         }
                         if (kgSacs > 0) {
                             parts.push(`<span class="cal-kg-line is-sacs" title="Total kg sacs: ${fmtKg2.format(kgSacs)} kg">` +
                                        `<span class="cal-kg-lbl">SACS</span>` +
-                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgSacs))}</span></span>`);
+                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgSacs))} Kg</span></span>`);
                         }
                         parts.push(`<span class="cal-kg-line is-total" title="Total kg: ${fmtKg2.format(kgTotal)} kg">` +
                                    `<span class="cal-kg-lbl">Total</span>` +
-                                   `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgTotal))}</span></span>`);
+                                   `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgTotal))} Kg</span></span>`);
                         kgBox.innerHTML = parts.join("");
                         cell.appendChild(kgBox);
                     }
-                }
-
-                if (llista.length > 0) {
-                    const ul = document.createElement("ul");
-                    ul.className = "cal-cell-list";
-                    let rangAnt = null;
-                    for (const c of llista) {
-                        const liEvt = renderEvent(c, iso);
-                        const rang = rangSort(c);
-                        if (rangAnt !== null && rang !== rangAnt) {
-                            liEvt.classList.add("is-rang-break");
-                        }
-                        rangAnt = rang;
-                        ul.appendChild(liEvt);
-                    }
-                    cell.appendChild(ul);
                 }
                 frag.appendChild(cell);
             }

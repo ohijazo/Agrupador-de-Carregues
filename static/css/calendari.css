@@ -480,31 +480,38 @@
     white-space: nowrap;
 }
 
-/* Desglossament Kg al peu del dia: una sola fila amb GRA · SACS · Total.
-   Cada xifra va acompanyada de "Kg". */
+/* Desglossament Kg al peu del dia: una sola fila SEMPRE.
+   Format: "GRA 23.780 · SACS 45.320 · Total 69.100 Kg".
+   Només el Total porta el sufix " Kg" — així cabem a la cel·la sense salt. */
 .cal-cell-kgs {
-    margin-top: auto;        /* empenta al peu de la cel·la (flex) */
+    margin-top: auto;        /* empenta al peu de la cel·la */
     padding-top: .35rem;
     border-top: 1px solid var(--gray-200);
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;       /* mai salta a una segona línia */
     align-items: baseline;
-    gap: .15rem .55rem;
-    font-size: .65rem;
+    gap: 0;
+    font-size: .62rem;
     font-variant-numeric: tabular-nums;
     line-height: 1.2;
+    overflow: hidden;
 }
 .cal-kg-line {
     display: inline-flex;
     align-items: baseline;
-    gap: .25rem;
+    gap: .2rem;
     white-space: nowrap;
+}
+.cal-kg-line + .cal-kg-line::before {
+    content: "·";
+    margin: 0 .35rem;
+    color: var(--gray-400);
 }
 .cal-kg-line .cal-kg-lbl {
     font-weight: 600;
     color: var(--gray-500);
     text-transform: uppercase;
-    letter-spacing: .04em;
+    letter-spacing: .03em;
 }
 .cal-kg-line .cal-kg-val {
     font-weight: 600;
@@ -512,9 +519,6 @@
 }
 .cal-kg-line.is-gra .cal-kg-lbl,
 .cal-kg-line.is-gra .cal-kg-val { color: #2c7a7b; }
-.cal-kg-line.is-total {
-    margin-left: auto;       /* a la dreta de la fila */
-}
 .cal-kg-line.is-total .cal-kg-lbl,
 .cal-kg-line.is-total .cal-kg-val {
     font-weight: 700;

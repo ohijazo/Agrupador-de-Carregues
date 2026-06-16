@@ -439,12 +439,12 @@
                         if (kgGra > 0) {
                             parts.push(`<span class="cal-kg-line is-gra" title="Total kg granel: ${fmtKg2.format(kgGra)} kg">` +
                                        `<span class="cal-kg-lbl">GRA</span>` +
-                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgGra))} Kg</span></span>`);
+                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgGra))}</span></span>`);
                         }
                         if (kgSacs > 0) {
                             parts.push(`<span class="cal-kg-line is-sacs" title="Total kg sacs: ${fmtKg2.format(kgSacs)} kg">` +
                                        `<span class="cal-kg-lbl">SACS</span>` +
-                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgSacs))} Kg</span></span>`);
+                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgSacs))}</span></span>`);
                         }
                         parts.push(`<span class="cal-kg-line is-total" title="Total kg: ${fmtKg2.format(kgTotal)} kg">` +
                                    `<span class="cal-kg-lbl">Total</span>` +

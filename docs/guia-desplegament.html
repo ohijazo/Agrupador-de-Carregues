@@ -310,7 +310,13 @@ AUTH_ENABLED=true
 FLASK_SECRET_KEY=&lt;secret_long_aleatori&gt;
 
 # --- Health endpoint (manté false en producció) ---
-EXPOSE_HEALTH_DETAIL=false</code></pre>
+EXPOSE_HEALTH_DETAIL=false
+
+# --- Opcionals: ajustaments de rendiment/limits ---
+# Llindar (ms) per a registrar peticions lentes al log; default 500.
+SLOW_REQUEST_MS=500
+# Cap m&agrave;xim de files retornades per /api/pbi/carregues; default 5000.
+PBI_MAX_FILES=5000</code></pre>
 
 <div class="warning">
     <strong>Port SQL Server:</strong> El servidor SQL utilitza el port <strong>50058</strong> (no el port est&agrave;ndard 1433). &Eacute;s imprescindible incloure el port a <code>SQL_SERVER</code> separat per coma.
@@ -339,6 +345,12 @@ sudo chown www-data:www-data /var/www/agrupacio-carregues/.env</code></pre>
     <tr><td><code>PG_POOL_MIN</code></td><td><code>1</code></td><td>Connexions m&iacute;nimes al pool</td></tr>
     <tr><td><code>PG_POOL_MAX</code></td><td><code>5</code></td><td>Connexions m&agrave;ximes al pool</td></tr>
     <tr><td><code>PREPARACIO_PATH</code></td><td><code>/var/www/comandes-venda</code></td><td>Ruta a Comandes Venda (motor d'embalatges)</td></tr>
+    <tr><td><code>PBI_API_KEY</code></td><td><em>(generada)</em></td><td>Clau del header <code>X-Api-Key</code> per a Power BI</td></tr>
+    <tr><td><code>AUTH_ENABLED</code></td><td><code>true</code></td><td>Activa login obligatori a la web</td></tr>
+    <tr><td><code>FLASK_SECRET_KEY</code></td><td><em>(generada)</em></td><td>Signa cookies de sessi&oacute; (obligatori en prod)</td></tr>
+    <tr><td><code>EXPOSE_HEALTH_DETAIL</code></td><td><code>false</code></td><td><code>/health</code> retorna nom&eacute;s booleans</td></tr>
+    <tr><td><code>SLOW_REQUEST_MS</code></td><td><code>500</code></td><td>Opcional. Llindar (ms) per logar peticions lentes</td></tr>
+    <tr><td><code>PBI_MAX_FILES</code></td><td><code>5000</code></td><td>Opcional. Cap m&agrave;xim de files al PBI</td></tr>
 </table>
 
 <div class="info">
@@ -370,7 +382,14 @@ sudo -u www-data venv/bin/python scripts/crear_admin.py
 #   Repeteix-la: ********</code></pre>
 
 <div class="info">
-    <strong>Rols disponibles:</strong> <code>admin</code> (per defecte), <code>oficina</code>, <code>magatzem</code>. La distinci&oacute; per rol s'aplicar&agrave; en versions futures; ara mateix tots tres tenen el mateix acc&eacute;s.
+    <strong>Rols disponibles</strong> (permisos diferenciats):
+    <table class="help-table" style="margin-top:.4rem;">
+        <tr><th>Rol</th><th>Acc&eacute;s</th></tr>
+        <tr><td><code>admin</code></td><td>Tot. A m&eacute;s pot gestionar usuaris des de <code>/admin/usuaris</code> (bot&oacute; ⚙ al header).</td></tr>
+        <tr><td><code>oficina</code></td><td>Cerca de c&agrave;rregues, agrupar, desar, eliminar, calendari, magatzem (lectura).</td></tr>
+        <tr><td><code>magatzem</code></td><td>Nom&eacute;s <code>/magatzem</code> (checklist productes preparats). En entrar a <code>/</code> es redirigit a <code>/magatzem</code>.</td></tr>
+    </table>
+    L'admin pot crear comptes addicionals des de la web; no cal tornar a usar el CLI un cop el primer admin estigui creat.
 </div>
 
 <h3>6.8 Verificar connexions a les dues BDs</h3>
@@ -555,8 +574,9 @@ Valor: &lt;IP-DEL-SERVIDOR&gt;     # mateix que les altres apps</code></pre>
 <table>
     <tr><th>Capa</th><th>Mecanisme</th><th>Variable d'entorn</th></tr>
     <tr><td>Autenticaci&oacute; web</td><td>Usuaris locals a PostgreSQL (taula <code>usuaris</code>) amb sessions per cookie signada</td><td><code>AUTH_ENABLED=true</code> + <code>FLASK_SECRET_KEY</code></td></tr>
-    <tr><td>CSRF</td><td>Double-submit cookie autom&agrave;tic per a <code>PATCH/POST/DELETE</code> a <code>/api/agrupacions/*</code></td><td>(cap)</td></tr>
+    <tr><td>CSRF</td><td>Double-submit cookie autom&agrave;tic per a <code>PATCH/POST/DELETE</code> a <code>/api/agrupacions/*</code> i <code>/api/admin/*</code></td><td>(cap)</td></tr>
     <tr><td>Rate-limit</td><td>30 req/min/IP a <code>/api/pbi/carregues</code>; 5 intents/min/IP a <code>/login</code></td><td>(cap)</td></tr>
+    <tr><td>Permisos per rol</td><td>Decoradors <code>@requires_rol</code> als endpoints: <code>admin</code>, <code>oficina</code>, <code>magatzem</code> tenen acc&eacute;s diferenciat</td><td>(cap, basat en taula <code>usuaris</code>)</td></tr>
     <tr><td>Audit log</td><td>Taula <code>audit_logs</code> a PostgreSQL: registra login OK/fallit, logout, desar/eliminar agrupaci&oacute;, marcar/desmarcar producte</td><td>(cap)</td></tr>
     <tr><td>API key PBI</td><td>Header <code>X-Api-Key</code> obligatori a <code>/api/pbi/*</code></td><td><code>PBI_API_KEY</code></td></tr>
     <tr><td>Headers HTTP</td><td><code>X-Content-Type-Options</code>, <code>X-Frame-Options: DENY</code>, <code>Referrer-Policy</code>, CSP <code>script-src 'self'</code></td><td>(cap)</td></tr>
@@ -579,6 +599,15 @@ WHERE accio = 'agrupacio_eliminada' GROUP BY user_name;
 EOF</code></pre>
 
 <h3>11.2 Gestionar usuaris</h3>
+
+<p>Hi ha <strong>dues vies</strong> per gestionar usuaris:</p>
+
+<div class="info">
+    <strong>Recomanat — UI web</strong>: un usuari amb rol <code>admin</code> pot anar a <code>http://agrupacions.agrienergia.local/admin/usuaris</code> (bot&oacute; ⚙ al header). Permet crear, editar (nom, rol, actiu), canviar contrasenya i desactivar tots els usuaris des del navegador, sense haver d'entrar al servidor.
+</div>
+
+<p>L'altra via &eacute;s la <strong>CLI</strong> (&uacute;til per a crear el primer admin o per a scripts d'automatitzaci&oacute;):</p>
+
 <pre><code># Crear un usuari nou (interactiu)
 sudo -u www-data venv/bin/python scripts/crear_admin.py \
                 --username operario1 --nom "Operari 1" --rol oficina

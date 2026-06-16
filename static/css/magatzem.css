@@ -35,6 +35,13 @@
     gap: 1.25rem;
     flex-wrap: wrap;
 }
+.mag-header-tools {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
 .mag-progres-box {
     min-width: 220px;
 }

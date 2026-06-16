@@ -11,9 +11,14 @@
 <body class="mag-body">
 
 <header class="mag-header">
-    <div class="container">
-        <h1>📦 Preparació de càrregues</h1>
-        <p class="mag-subtitle">Tria una agrupació desada per començar</p>
+    <div class="container mag-header-row">
+        <div>
+            <h1>📦 Preparació de càrregues</h1>
+            <p class="mag-subtitle">Tria una agrupació desada per començar</p>
+        </div>
+        <div class="mag-header-tools">
+            {% include '_user_menu.html' %}
+        </div>
     </div>
 </header>
 
@@ -39,5 +44,6 @@
 <script src="{{ static_url('js/fmt.js') }}"></script>
 <script src="{{ static_url('js/palets.js') }}"></script>
 <script src="{{ static_url('js/magatzem.js') }}"></script>
+<script src="{{ static_url('js/user-menu.js') }}"></script>
 </body>
 </html>

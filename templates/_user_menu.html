@@ -1,0 +1,26 @@
+{% if current_user %}
+<details class="user-menu">
+    <summary class="user-menu-trigger" title="{{ current_user.username }} · {{ current_user.rol }}" aria-label="Menú d'usuari">
+        <span class="user-menu-avatar" aria-hidden="true">👤</span>
+        <span class="user-menu-name-short">{{ current_user.nom }}</span>
+        <span class="user-menu-caret" aria-hidden="true">▾</span>
+    </summary>
+    <div class="user-menu-dropdown" role="menu">
+        <div class="user-menu-info">
+            <div class="user-menu-name">{{ current_user.nom }}</div>
+            <div class="user-menu-username">{{ current_user.username }}</div>
+            <span class="user-menu-rol user-menu-rol-{{ current_user.rol }}">{{ current_user.rol }}</span>
+        </div>
+        {% if current_user.rol == 'admin' %}
+        <a href="/admin/usuaris" class="user-menu-item" role="menuitem">
+            <span aria-hidden="true">⚙</span> Administració d'usuaris
+        </a>
+        {% endif %}
+        <form method="POST" action="{{ url_for('logout') }}" class="user-menu-form">
+            <button type="submit" class="user-menu-item user-menu-logout" role="menuitem">
+                <span aria-hidden="true">⎋</span> Tancar sessió
+            </button>
+        </form>
+    </div>
+</details>
+{% endif %}

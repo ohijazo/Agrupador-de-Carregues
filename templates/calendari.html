@@ -19,6 +19,7 @@
         <div class="header-help">
             <a href="/" class="btn btn-icon" title="Torna a l'inici" aria-label="Inici" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">←</a>
             <a href="/ajuda" target="_blank" rel="noopener" class="btn btn-icon" title="Ajuda completa" aria-label="Ajuda" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">?</a>
+            {% include '_user_menu.html' %}
         </div>
     </div>
 </header>
@@ -89,5 +90,6 @@
 
 <script src="{{ static_url('js/fmt.js') }}"></script>
 <script src="{{ static_url('js/calendari.js') }}"></script>
+<script src="{{ static_url('js/user-menu.js') }}"></script>
 </body>
 </html>

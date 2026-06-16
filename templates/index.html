@@ -17,18 +17,13 @@
             <p class="subtitle">Sumatori d'embalatges de múltiples càrregues per producte</p>
         </div>
         <div class="header-help">
-            {% if current_user %}
-            <span class="header-user" title="{{ current_user.username }} · {{ current_user.rol }}">👤 {{ current_user.nom }}</span>
-            {% if current_user.rol == 'admin' %}
-            <a href="/admin/usuaris" class="btn btn-icon" title="Administració d'usuaris" aria-label="Admin" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">⚙</a>
-            {% endif %}
-            <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
-                <button type="submit" class="btn btn-icon" title="Tanca sessió" aria-label="Tanca sessió">⎋</button>
-            </form>
-            {% endif %}
             <a href="/calendari" class="btn btn-icon" title="Calendari mensual" aria-label="Calendari" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">📅</a>
-            <button type="button" id="btn-agrupacions-desades" class="btn btn-icon" title="Agrupacions desades" aria-label="Agrupacions desades">★</button>
+            <button type="button" id="btn-agrupacions-desades" class="btn-pill" title="Agrupacions desades" aria-label="Agrupacions desades">
+                <span class="btn-pill-icon" aria-hidden="true">⭐</span>
+                <span class="btn-pill-text">Desades</span>
+            </button>
             <a href="/ajuda" target="_blank" rel="noopener" class="btn btn-icon" title="Ajuda completa" aria-label="Ajuda" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">?</a>
+            {% include '_user_menu.html' %}
         </div>
     </div>
 </header>
@@ -241,5 +236,6 @@
 <script src="{{ static_url('js/palets.js') }}"></script>
 <script src="{{ static_url('js/dialogs.js') }}"></script>
 <script src="{{ static_url('js/app.js') }}"></script>
+<script src="{{ static_url('js/user-menu.js') }}"></script>
 </body>
 </html>

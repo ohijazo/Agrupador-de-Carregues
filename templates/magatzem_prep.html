@@ -17,9 +17,12 @@
             <h1>{{ nom }}</h1>
             <p class="mag-subtitle" id="mag-resum"></p>
         </div>
-        <div class="mag-progres-box">
-            <div class="mag-progres-text"><span id="mag-prep-count">0</span> / <span id="mag-total">0</span></div>
-            <div class="mag-progres-bar"><div id="mag-progres-fill" class="mag-progres-fill"></div></div>
+        <div class="mag-header-tools">
+            <div class="mag-progres-box">
+                <div class="mag-progres-text"><span id="mag-prep-count">0</span> / <span id="mag-total">0</span></div>
+                <div class="mag-progres-bar"><div id="mag-progres-fill" class="mag-progres-fill"></div></div>
+            </div>
+            {% include '_user_menu.html' %}
         </div>
     </div>
 </header>
@@ -52,5 +55,6 @@
 <script src="{{ static_url('js/palets.js') }}"></script>
 <script src="{{ static_url('js/dialogs.js') }}"></script>
 <script src="{{ static_url('js/magatzem.js') }}"></script>
+<script src="{{ static_url('js/user-menu.js') }}"></script>
 </body>
 </html>

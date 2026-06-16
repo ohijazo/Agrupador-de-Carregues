@@ -17,8 +17,19 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 from functools import wraps
+
+
+# Validació d'email simple — suficient per al cas d'ús intern. No prentem
+# fer un parser RFC 5322 complet; només garantim que té un format raonable
+# (X@Y.Z, sense espais).
+_RE_EMAIL = re.compile(r"^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$")
+
+
+def es_email_valid(s: str) -> bool:
+    return bool(_RE_EMAIL.match((s or "").strip().lower()))
 
 from flask import jsonify, redirect, request, session, url_for
 
@@ -71,8 +82,8 @@ def verify_password(plain: str, stored: str) -> bool:
 # ---------------------------------------------------------------------------
 def crear_usuari(username: str, password: str, nom: str, rol: str = "oficina") -> dict:
     username = (username or "").strip().lower()
-    if not username or " " in username:
-        raise ValueError("username invàlid (no pot ser buit ni contenir espais)")
+    if not es_email_valid(username):
+        raise ValueError("L'usuari ha de ser un email vàlid (p.ex. nom@agrienergia.com)")
     if rol not in ("admin", "oficina", "magatzem"):
         raise ValueError(f"rol invàlid: {rol}")
     h = hash_password(password)

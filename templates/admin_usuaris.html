@@ -38,7 +38,7 @@
             <table class="data-table" id="taula-usuaris">
                 <thead>
                     <tr>
-                        <th>Username</th>
+                        <th>Email</th>
                         <th>Nom</th>
                         <th>Rol</th>
                         <th>Estat</th>
@@ -62,9 +62,9 @@
         </header>
         <form id="form-usuari" class="dlg-form">
             <div class="field-row">
-                <label for="f-username">Username</label>
-                <input type="text" id="f-username" name="username" required pattern="[a-z0-9_.\-]{2,30}" autocomplete="off">
-                <small class="muted">Minúscules, números, _ . - (sense espais)</small>
+                <label for="f-username">Email</label>
+                <input type="email" id="f-username" name="username" required autocomplete="off" placeholder="nom@agrienergia.com">
+                <small class="muted">L'email s'usa com a identificador per a iniciar sessió.</small>
             </div>
             <div class="field-row">
                 <label for="f-nom">Nom complet</label>

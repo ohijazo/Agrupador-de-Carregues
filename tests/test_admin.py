@@ -28,8 +28,8 @@ def auth_client(store_tmp, monkeypatch):
     import db
     with db.get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM usuaris WHERE username LIKE 'test_%'")
-            cur.execute("DELETE FROM audit_logs WHERE accio LIKE 'login_%' OR target LIKE 'test_%'")
+            cur.execute("DELETE FROM usuaris WHERE username LIKE '%@pytest.local'")
+            cur.execute("DELETE FROM audit_logs WHERE accio LIKE 'login_%' OR target LIKE '%@pytest.local'")
 
     import app as app_module
     app_module.app.config["TESTING"] = True
@@ -38,7 +38,7 @@ def auth_client(store_tmp, monkeypatch):
 
     with db.get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM usuaris WHERE username LIKE 'test_%'")
+            cur.execute("DELETE FROM usuaris WHERE username LIKE '%@pytest.local'")
 
 
 def _get_csrf_token(client):
@@ -52,12 +52,12 @@ def _get_csrf_token(client):
     return cookie.value if cookie else ""
 
 
-def _crear_admin(username="test_admin", password="adminpass123"):
+def _crear_admin(username="admin@pytest.local", password="adminpass123"):
     import auth
     return auth.crear_usuari(username, password, "Test Admin", rol="admin")
 
 
-def _crear_oficina(username="test_oficina", password="oficinapass123"):
+def _crear_oficina(username="oficina@pytest.local", password="oficinapass123"):
     import auth
     return auth.crear_usuari(username, password, "Test Oficina", rol="oficina")
 
@@ -100,20 +100,20 @@ def test_health_continua_public_amb_auth_actiu(auth_client):
 # --- Login flow ----------------------------------------------------------
 def test_login_correcte(auth_client):
     _crear_admin()
-    r = _login(auth_client, "test_admin", "adminpass123")
+    r = _login(auth_client, "admin@pytest.local", "adminpass123")
     # Redirect cap a /
     assert r.status_code == 302
     # Ara amb la sessió set, accedim a /api/me
     r2 = auth_client.get("/api/me")
     body = r2.get_json()
     assert body["authenticated"] is True
-    assert body["username"] == "test_admin"
+    assert body["username"] == "admin@pytest.local"
     assert body["rol"] == "admin"
 
 
 def test_login_password_incorrecte(auth_client):
     _crear_admin()
-    r = _login(auth_client, "test_admin", "WRONG_password")
+    r = _login(auth_client, "admin@pytest.local", "WRONG_password")
     assert r.status_code == 401
 
 
@@ -126,7 +126,7 @@ def test_login_usuari_desactivat(auth_client):
     import auth
     u = _crear_admin()
     auth.actualitzar_usuari(u["id"], actiu=False)
-    r = _login(auth_client, "test_admin", "adminpass123")
+    r = _login(auth_client, "admin@pytest.local", "adminpass123")
     assert r.status_code == 401
 
 
@@ -164,18 +164,18 @@ def test_admin_crear_usuari(auth_client):
     tok = _get_csrf_token(auth_client)
     r = auth_client.post(
         "/api/admin/usuaris",
-        json={"username": "test_new", "password": "newpass123", "nom": "Test New", "rol": "oficina"},
+        json={"username": "new@pytest.local", "password": "newpass123", "nom": "Test New", "rol": "oficina"},
         headers={"X-CSRF-Token": tok},
     )
     assert r.status_code == 201
-    assert r.get_json()["username"] == "test_new"
+    assert r.get_json()["username"] == "new@pytest.local"
 
 
 def test_admin_crear_username_duplicat(auth_client):
     u = _crear_admin()
     _login_as(auth_client, u)
     tok = _get_csrf_token(auth_client)
-    payload = {"username": "test_dup", "password": "pass12345", "nom": "Dup", "rol": "oficina"}
+    payload = {"username": "dup@pytest.local", "password": "pass12345", "nom": "Dup", "rol": "oficina"}
     auth_client.post("/api/admin/usuaris", json=payload, headers={"X-CSRF-Token": tok})
     r = auth_client.post("/api/admin/usuaris", json=payload, headers={"X-CSRF-Token": tok})
     assert r.status_code == 409
@@ -187,7 +187,7 @@ def test_admin_crear_password_curta(auth_client):
     tok = _get_csrf_token(auth_client)
     r = auth_client.post(
         "/api/admin/usuaris",
-        json={"username": "test_x", "password": "curt", "nom": "X", "rol": "oficina"},
+        json={"username": "x@pytest.local", "password": "curt", "nom": "X", "rol": "oficina"},
         headers={"X-CSRF-Token": tok},
     )
     assert r.status_code == 400
@@ -209,7 +209,7 @@ def test_admin_no_es_pot_desactivar_a_si_mateix(auth_client):
 # --- Redirect magatzem → /magatzem --------------------------------------
 def test_magatzem_redirigit_a_magatzem_des_de_index(auth_client):
     import auth
-    u = auth.crear_usuari("test_magatzem", "magpass123", "Test Mag", rol="magatzem")
+    u = auth.crear_usuari("mag@pytest.local", "magpass123", "Test Mag", rol="magatzem")
     _login_as(auth_client, u)
     r = auth_client.get("/", follow_redirects=False)
     assert r.status_code == 302
@@ -218,7 +218,7 @@ def test_magatzem_redirigit_a_magatzem_des_de_index(auth_client):
 
 def test_magatzem_no_pot_cercar_carregues(auth_client):
     import auth
-    u = auth.crear_usuari("test_magatzem2", "magpass123", "Test Mag", rol="magatzem")
+    u = auth.crear_usuari("mag2@pytest.local", "magpass123", "Test Mag", rol="magatzem")
     _login_as(auth_client, u)
     r = auth_client.get("/api/transportistes")
     assert r.status_code == 403

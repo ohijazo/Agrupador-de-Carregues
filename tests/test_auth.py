@@ -61,22 +61,22 @@ def usuaris_tmp():
     import db
     with db.get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM usuaris WHERE username LIKE 'test_%'")
+            cur.execute("DELETE FROM usuaris WHERE username LIKE '%@pytest.local'")
     yield
     with db.get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM usuaris WHERE username LIKE 'test_%'")
+            cur.execute("DELETE FROM usuaris WHERE username LIKE '%@pytest.local'")
 
 
 def test_crear_usuari_ok(usuaris_tmp):
-    u = auth.crear_usuari("test_one", "secret123", "Test One")
-    assert u["username"] == "test_one"
+    u = auth.crear_usuari("one@pytest.local", "secret123", "Test One")
+    assert u["username"] == "one@pytest.local"
     assert u["rol"] == "oficina"
     assert u["actiu"] is True
 
 
 def test_crear_usuari_rol_admin(usuaris_tmp):
-    u = auth.crear_usuari("test_admin", "secret123", "Test Admin", rol="admin")
+    u = auth.crear_usuari("admin@pytest.local", "secret123", "Test Admin", rol="admin")
     assert u["rol"] == "admin"
 
 
@@ -84,34 +84,38 @@ def test_crear_usuari_username_invalid(usuaris_tmp):
     with pytest.raises(ValueError):
         auth.crear_usuari("", "secret123", "Test")
     with pytest.raises(ValueError):
-        auth.crear_usuari("té espais", "secret123", "Test")
+        auth.crear_usuari("no es un email", "secret123", "Test")
+    with pytest.raises(ValueError):
+        auth.crear_usuari("nomesun_nom", "secret123", "Test")
+    with pytest.raises(ValueError):
+        auth.crear_usuari("falta@domini", "secret123", "Test")
 
 
 def test_crear_usuari_rol_invalid(usuaris_tmp):
     with pytest.raises(ValueError):
-        auth.crear_usuari("test_x", "secret123", "X", rol="superhero")
+        auth.crear_usuari("x@pytest.local", "secret123", "X", rol="superhero")
 
 
 def test_get_user_by_username_inexistent(usuaris_tmp):
-    assert auth.get_user_by_username("test_no_existeix") is None
+    assert auth.get_user_by_username("noexisteix@pytest.local") is None
 
 
 def test_get_user_by_username_normalitza(usuaris_tmp):
-    auth.crear_usuari("test_two", "secret123", "Test Two")
-    u = auth.get_user_by_username("  TEST_TWO  ")  # majúscules i espais
+    auth.crear_usuari("two@pytest.local", "secret123", "Test Two")
+    u = auth.get_user_by_username("  TWO@PYTEST.LOCAL  ")  # majúscules i espais
     assert u is not None
-    assert u["username"] == "test_two"
+    assert u["username"] == "two@pytest.local"
 
 
 def test_actualitzar_usuari_nom_rol(usuaris_tmp):
-    u = auth.crear_usuari("test_three", "secret123", "Nom Antic")
+    u = auth.crear_usuari("three@pytest.local", "secret123", "Nom Antic")
     u2 = auth.actualitzar_usuari(u["id"], nom="Nom Nou", rol="admin")
     assert u2["nom"] == "Nom Nou"
     assert u2["rol"] == "admin"
 
 
 def test_actualitzar_usuari_desactivar(usuaris_tmp):
-    u = auth.crear_usuari("test_four", "secret123", "Test Four")
+    u = auth.crear_usuari("four@pytest.local", "secret123", "Test Four")
     u2 = auth.actualitzar_usuari(u["id"], actiu=False)
     assert u2["actiu"] is False
 
@@ -121,10 +125,8 @@ def test_actualitzar_usuari_inexistent(usuaris_tmp):
 
 
 def test_canvi_contrasenya(usuaris_tmp):
-    u = auth.crear_usuari("test_five", "old_password", "Test Five")
+    u = auth.crear_usuari("five@pytest.local", "old_password", "Test Five")
     assert auth.canvi_contrasenya(u["id"], "new_password_long") is True
-    # La nova contrasenya verifica
-    stored = auth.get_user_by_username("test_five")
     # Necessitem el password_hash — obtenir_usuari no el retorna, fem query directa
     import db
     row = db.fetch_one("SELECT password_hash FROM usuaris WHERE id = %s", (u["id"],))
@@ -133,9 +135,21 @@ def test_canvi_contrasenya(usuaris_tmp):
 
 
 def test_canvi_contrasenya_massa_curta(usuaris_tmp):
-    u = auth.crear_usuari("test_six", "abc12345", "Test Six")
+    u = auth.crear_usuari("six@pytest.local", "abc12345", "Test Six")
     with pytest.raises(ValueError):
         auth.canvi_contrasenya(u["id"], "curt")
+
+
+def test_es_email_valid():
+    assert auth.es_email_valid("nom@empresa.com") is True
+    assert auth.es_email_valid("a.b@c.de") is True
+    assert auth.es_email_valid("nom+tag@empresa.cat") is True
+    assert auth.es_email_valid("nom@empresa") is False  # falta TLD
+    assert auth.es_email_valid("nom@empresa.c") is False  # TLD massa curt (<2)
+    assert auth.es_email_valid("nom.empresa.com") is False  # falta @
+    assert auth.es_email_valid("") is False
+    assert auth.es_email_valid(None) is False
+    assert auth.es_email_valid("amb espai@empresa.com") is False
 
 
 # --- auth_enabled --------------------------------------------------------

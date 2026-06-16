@@ -348,8 +348,8 @@ def api_admin_usuaris_crear():
     nom = (body.get("nom") or "").strip()
     rol = (body.get("rol") or "oficina").strip()
     password = body.get("password") or ""
-    if not username or " " in username:
-        return _err_validacio("Username invàlid (no buit, sense espais).")
+    if not auth.es_email_valid(username):
+        return _err_validacio("L'usuari ha de ser un email vàlid (p.ex. nom@agrienergia.com).")
     if not nom:
         return _err_validacio("El nom és obligatori.")
     if len(password) < 8:

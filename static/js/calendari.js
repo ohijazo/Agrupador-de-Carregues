@@ -163,19 +163,42 @@
                 perDia.get(key).push(c);
             }
         }
+        // Ordenació dins d'un mateix dia: 4 blocs i, dins de cada bloc,
+        // ordre per kg total descendent.
+        //   Bloc 1 (rank=0): càrregues granel
+        //   Bloc 2 (rank=1): transportista comença per "AGRI"
+        //   Bloc 3 (rank=2): transportista comença per "Mª Soledad López"
+        //                    (variants amb/sense "ª")
+        //   Bloc 4 (rank=3): la resta
+        function rangSort(c) {
+            if (c.is_granel) return 0;
+            const tra = (c.transportista || "").trim().toUpperCase();
+            if (tra.startsWith("AGRI")) return 1;
+            // "Mª SOLEDAD LÓPEZ" — tolerem variants amb i sense l'ordinal
+            // "ª" (U+00AA) i normalitzem accents.
+            const traNorm = tra
+                .normalize("NFD")
+                .replace(/[̀-ͯª]/g, "");
+            if (traNorm.startsWith("M SOLEDAD LOPEZ")) return 2;
+            return 3;
+        }
+        function compararDins(a, b) {
+            const ra = rangSort(a);
+            const rb = rangSort(b);
+            if (ra !== rb) return ra - rb;
+            // Dins el bloc: kg de més gran a més petit
+            const ka = kgDeCarrega(a);
+            const kb = kgDeCarrega(b);
+            if (ka !== kb) return kb - ka;
+            // Empat: descripció alfabètica
+            return (a.car_descripcion || "").localeCompare(b.car_descripcion || "", "ca");
+        }
         for (const arr of perDia.values()) {
-            arr.sort((a, b) => {
-                const ga = a.is_granel ? 0 : 1;
-                const gb = b.is_granel ? 0 : 1;
-                if (ga !== gb) return ga - gb;
-                return (a.car_descripcion || "").localeCompare(b.car_descripcion || "", "ca");
-            });
+            arr.sort(compararDins);
         }
         capSetmana.sort((a, b) => {
             if (a.data !== b.data) return a.data.localeCompare(b.data);
-            const ga = a.c.is_granel ? 0 : 1;
-            const gb = b.c.is_granel ? 0 : 1;
-            return ga - gb;
+            return compararDins(a.c, b.c);
         });
         state.carreguesPerDiaTotes = perDia;
         state.capSetmanaTotes = capSetmana;

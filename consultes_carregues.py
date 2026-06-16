@@ -77,6 +77,9 @@ def llistar_carregues(
     # acceptem o sal directe o qualsevol sal mapejat via SERIEALB.
     # Resol primer la sal real (via CROSS APPLY amb CPALBARA) per evitar
     # caçar línies d'un albarà d'una altra sèrie amb el mateix número.
+    # PRIORITAT: 1) tra_codi coincideix amb el de la càrrega (l'albarà real
+    # és del mateix transportista); 2) match directe (cas freqüent quan la
+    # sèrie del pedido coincideix amb la de l'albarà real).
     exists_palletizable_sql = """
         EXISTS (
             SELECT 1
@@ -93,12 +96,9 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                ORDER BY CASE WHEN EXISTS (
-                    SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                    WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                      AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                      AND  s.sal_codigo       = cp.sal_codigo
-                ) THEN 0 ELSE 1 END
+                ORDER BY
+                    CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
@@ -134,14 +134,12 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat: 0 = match via SERIEALB (l'albarà real del pedido),
-                --            1 = match directe (només si no hi ha SERIEALB).
-                ORDER BY CASE WHEN EXISTS (
-                    SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                    WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                      AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                      AND  s.sal_codigo       = cp.sal_codigo
-                ) THEN 0 ELSE 1 END
+                -- Prioritat (mateix patró que els altres helpers):
+                -- 1) tra_codi coincident amb la càrrega → l'albarà real
+                -- 2) sal directe → cas comú quan no hi ha SERIEALB diferencia
+                ORDER BY
+                    CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
@@ -220,14 +218,12 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat: 0 = match via SERIEALB (l'albarà real del pedido),
-                --            1 = match directe (només si no hi ha SERIEALB).
-                ORDER BY CASE WHEN EXISTS (
-                    SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                    WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
-                      AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
-                      AND  s.sal_codigo       = cp.sal_codigo
-                ) THEN 0 ELSE 1 END
+                -- Prioritat (mateix patró que els altres helpers):
+                -- 1) tra_codi coincident amb la càrrega → l'albarà real
+                -- 2) sal directe → cas comú quan no hi ha SERIEALB diferencia
+                ORDER BY
+                    CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d2.det_documento, 1, 4)
@@ -462,18 +458,31 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
 
     conn = connectar()
     try:
+        # Obté el tra_codi de la càrrega — clau per a discriminar el sal_real
+        # quan hi ha múltiples candidats a CPALBARA amb el mateix número.
+        tra_row = conn.execute(
+            "SELECT RTRIM(tra_codi) AS tra_codi FROM Cargas WITH (NOLOCK) "
+            "WHERE eje_ejercicio=? AND sca_serie=? AND car_numero=?",
+            eje, sca, car,
+        ).fetchone()
+        carrega_tra_codi = (tra_row.tra_codi if tra_row else "") or ""
+
         # Pas 1: resoldre la sèrie real (sal_real) per a cada albarà.
         # Detcargas codifica la sèrie del PEDIDO (sal_SerAlbDefPed); la comanda
-        # real a CPALBARA/ALBLINIA pot tenir una sèrie diferent. SERIEALB és la
-        # taula de mapeig. Provem primer sal directe (cas habitual) i, si no
-        # existeix, traduïm via SERIEALB.sal_SerAlbDefPed.
+        # real a CPALBARA/ALBLINIA pot tenir una sèrie diferent. SERIEALB és
+        # la taula de mapeig, però per a un mateix sal_pedido pot haver-hi
+        # múltiples sal_real possibles. Per discriminar, prioritzem:
+        #   1) match de tra_codi amb el de la càrrega (l'albarà real és del
+        #      mateix transportista que la càrrega).
+        #   2) sal directe (cas freqüent quan no hi ha mapping a SERIEALB).
         claus_doc = [(a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]) for a in albarans]
         values_sql = ",".join(["(CAST(? AS varchar(4)), CAST(? AS varchar(2)), CAST(? AS varchar(7)))"] * len(claus_doc))
-        params_resolve: list = []
+        params_resolve: list = [carrega_tra_codi]  # primer param: tra_codi
         for k in claus_doc:
             params_resolve.extend(k)
 
         sql_resolve = f"""
+            DECLARE @carrega_tra varchar(5) = RTRIM(?);
             SELECT d.eje_doc, d.sal_doc, d.alb_doc,
                    RTRIM(cp.sal_codigo) AS sal_real,
                    RTRIM(cp.cli_codi)   AS cli_codi,
@@ -493,17 +502,15 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                                AND  s.sal_SerAlbDefPed = d.sal_doc
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat: 0 = match via SERIEALB (l'albarà real del pedido),
-                --            1 = match directe (només si no hi ha mapping SERIEALB).
-                -- Si prioritzem directe i hi ha SERIEALB, es caça un albarà
-                -- d'una altra sèrie que coincideix només en número (verificat
-                -- amb cpa_albara=0000065: sal=02 PROMIC vs sal=52 NUTREX).
-                ORDER BY CASE WHEN EXISTS (
-                    SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                    WHERE  s.eje_ejercicio    = d.eje_doc
-                      AND  s.sal_SerAlbDefPed = d.sal_doc
-                      AND  s.sal_codigo       = cp.sal_codigo
-                ) THEN 0 ELSE 1 END
+                -- Prioritat:
+                --   1) tra_codi coincident amb el de la càrrega → l'albarà real
+                --      (verificat amb 2026/01/0002269 MATAS tra=154 i
+                --       2026/02/0000208 NUTREX tra=100).
+                --   2) sal directe → cas comú quan la sèrie del pedido
+                --      coincideix amb la sèrie de l'albarà real.
+                ORDER BY
+                    CASE WHEN RTRIM(cp.tra_codi) = @carrega_tra THEN 0 ELSE 1 END,
+                    CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
             ) cp
             LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi
             -- Direcció d'enviament (CLIENVIO): fallback per a `pobla` quan CPALBARA.cpa_pobla és buit.

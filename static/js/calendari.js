@@ -403,6 +403,16 @@
                     badge.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">📦</span>${llista.length}`;
                     badge.title = `${llista.length} càrregues`;
                     head.appendChild(badge);
+
+                    // Kg totals a la capçalera (al costat del badge, amb icona ⚖)
+                    const sumKg = llista.reduce((acc, c) => acc + kgDeCarrega(c), 0);
+                    if (sumKg > 0) {
+                        const kgSpan = document.createElement("span");
+                        kgSpan.className = "cal-cell-kg";
+                        kgSpan.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">⚖</span>${escapeHtml(fmtKg0.format(sumKg))} kg`;
+                        kgSpan.title = `Total: ${fmtKg2.format(sumKg)} kg`;
+                        head.appendChild(kgSpan);
+                    }
                 }
                 cell.appendChild(head);
 

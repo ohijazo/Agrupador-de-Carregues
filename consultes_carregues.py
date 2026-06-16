@@ -75,22 +75,36 @@ def llistar_carregues(
     # NOTA: el `sal_codigo` codificat a det_documento és la sèrie del PEDIDO
     # (sal_SerAlbDefPed); la sèrie real a ALBLINIA pot diferir. Per això
     # acceptem o sal directe o qualsevol sal mapejat via SERIEALB.
+    # Resol primer la sal real (via CROSS APPLY amb CPALBARA) per evitar
+    # caçar línies d'un albarà d'una altra sèrie amb el mateix número.
     exists_palletizable_sql = """
         EXISTS (
             SELECT 1
             FROM   Detcargas d  WITH (NOLOCK)
-            JOIN   ALBLINIA  l  WITH (NOLOCK)
+            CROSS APPLY (
+                SELECT TOP 1 cp.sal_codigo
+                FROM   CPALBARA cp WITH (NOLOCK)
+                WHERE  cp.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
+                  AND  cp.cpa_albara    = SUBSTRING(d.det_documento, 7, 7)
+                  AND  ( cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2)
+                         OR EXISTS (
+                             SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                             WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                               AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                               AND  s.sal_codigo       = cp.sal_codigo
+                         ) )
+                ORDER BY CASE WHEN EXISTS (
+                    SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                    WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                      AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                      AND  s.sal_codigo       = cp.sal_codigo
+                ) THEN 0 ELSE 1 END
+            ) sal_resolt
+            JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
+              AND l.sal_codigo    = sal_resolt.sal_codigo
               AND l.cpa_albara    = SUBSTRING(d.det_documento, 7, 7)
-              AND ( l.sal_codigo = SUBSTRING(d.det_documento, 5, 2)
-                    OR EXISTS (
-                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                        WHERE s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                          AND s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                          AND s.sal_codigo       = l.sal_codigo
-                    )
-                  )
-            JOIN   ARTICLES  a  WITH (NOLOCK) ON a.art_codi = l.art_codi
+            JOIN   ARTICLES  a   WITH (NOLOCK) ON a.art_codi = l.art_codi
             WHERE  d.eje_ejercicio = c.eje_ejercicio
               AND  d.sca_serie     = c.sca_serie
               AND  d.car_numero    = c.car_numero
@@ -120,7 +134,14 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                ORDER BY CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
+                -- Prioritat: 0 = match via SERIEALB (l'albarà real del pedido),
+                --            1 = match directe (només si no hi ha SERIEALB).
+                ORDER BY CASE WHEN EXISTS (
+                    SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                    WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                      AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                      AND  s.sal_codigo       = cp.sal_codigo
+                ) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
@@ -199,7 +220,14 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                ORDER BY CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END
+                -- Prioritat: 0 = match via SERIEALB (l'albarà real del pedido),
+                --            1 = match directe (només si no hi ha SERIEALB).
+                ORDER BY CASE WHEN EXISTS (
+                    SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                    WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
+                      AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
+                      AND  s.sal_codigo       = cp.sal_codigo
+                ) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d2.det_documento, 1, 4)
@@ -465,7 +493,17 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                                AND  s.sal_SerAlbDefPed = d.sal_doc
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                ORDER BY CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
+                -- Prioritat: 0 = match via SERIEALB (l'albarà real del pedido),
+                --            1 = match directe (només si no hi ha mapping SERIEALB).
+                -- Si prioritzem directe i hi ha SERIEALB, es caça un albarà
+                -- d'una altra sèrie que coincideix només en número (verificat
+                -- amb cpa_albara=0000065: sal=02 PROMIC vs sal=52 NUTREX).
+                ORDER BY CASE WHEN EXISTS (
+                    SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                    WHERE  s.eje_ejercicio    = d.eje_doc
+                      AND  s.sal_SerAlbDefPed = d.sal_doc
+                      AND  s.sal_codigo       = cp.sal_codigo
+                ) THEN 0 ELSE 1 END
             ) cp
             LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi
             -- Direcció d'enviament (CLIENVIO): fallback per a `pobla` quan CPALBARA.cpa_pobla és buit.

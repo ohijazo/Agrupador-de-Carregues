@@ -490,6 +490,22 @@
     overflow: hidden;
 }
 
+/* Separador entre blocs (granel / AGRI / Mª Soledad / resta).
+   Apareix només quan canvia el rang d'un event al següent dins la mateixa cel·la. */
+.cal-evt.is-rang-break {
+    margin-top: 6px;
+    position: relative;
+}
+.cal-evt.is-rang-break::before {
+    content: "";
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: -4px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gray-300) 20%, var(--gray-300) 80%, transparent);
+}
+
 .cal-evt {
     position: relative;
     display: flex;

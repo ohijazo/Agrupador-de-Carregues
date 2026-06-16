@@ -54,6 +54,17 @@
         return { inici, fi };
     }
 
+    // Rang d'ordenació per a la separació en blocs dins d'un mateix dia.
+    //   0 = granel    · 1 = AGRI    · 2 = Mª Soledad López    · 3 = resta
+    function rangSort(c) {
+        if (c.is_granel) return 0;
+        const tra = (c.transportista || "").trim().toUpperCase();
+        if (tra.startsWith("AGRI")) return 1;
+        const traNorm = tra.normalize("NFD").replace(/[̀-ͯª]/g, "");
+        if (traNorm.startsWith("M SOLEDAD LOPEZ")) return 2;
+        return 3;
+    }
+
     function kgDeCarrega(c) {
         const k = Number(c.kg_total) || 0;
         if (k > 0) return k;
@@ -163,25 +174,8 @@
                 perDia.get(key).push(c);
             }
         }
-        // Ordenació dins d'un mateix dia: 4 blocs i, dins de cada bloc,
-        // ordre per kg total descendent.
-        //   Bloc 1 (rank=0): càrregues granel
-        //   Bloc 2 (rank=1): transportista comença per "AGRI"
-        //   Bloc 3 (rank=2): transportista comença per "Mª Soledad López"
-        //                    (variants amb/sense "ª")
-        //   Bloc 4 (rank=3): la resta
-        function rangSort(c) {
-            if (c.is_granel) return 0;
-            const tra = (c.transportista || "").trim().toUpperCase();
-            if (tra.startsWith("AGRI")) return 1;
-            // "Mª SOLEDAD LÓPEZ" — tolerem variants amb i sense l'ordinal
-            // "ª" (U+00AA) i normalitzem accents.
-            const traNorm = tra
-                .normalize("NFD")
-                .replace(/[̀-ͯª]/g, "");
-            if (traNorm.startsWith("M SOLEDAD LOPEZ")) return 2;
-            return 3;
-        }
+        // Ordenació dins d'un mateix dia: 4 blocs (rangSort definit a nivell
+        // de mòdul) i, dins de cada bloc, ordre per kg total descendent.
         function compararDins(a, b) {
             const ra = rangSort(a);
             const rb = rangSort(b);
@@ -424,7 +418,16 @@
                 if (llista.length > 0) {
                     const ul = document.createElement("ul");
                     ul.className = "cal-cell-list";
-                    for (const c of llista) ul.appendChild(renderEvent(c, iso));
+                    let rangAnt = null;
+                    for (const c of llista) {
+                        const liEvt = renderEvent(c, iso);
+                        const rang = rangSort(c);
+                        if (rangAnt !== null && rang !== rangAnt) {
+                            liEvt.classList.add("is-rang-break");
+                        }
+                        rangAnt = rang;
+                        ul.appendChild(liEvt);
+                    }
                     cell.appendChild(ul);
                 }
                 frag.appendChild(cell);
@@ -459,6 +462,7 @@
         li.dataset.id = c.carrega_id || "";
         li.dataset.data = isoData;
         li.dataset.tipus = c.is_granel ? "granel" : "saca";
+        li.dataset.rang = String(rangSort(c));
         if (c.palletitzable === false) li.classList.add("is-no-palletitzable");
         const traColor = colorPerTra(c.tra_codi);
         if (traColor) li.style.setProperty("--tra-color", traColor);

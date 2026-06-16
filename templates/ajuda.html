@@ -291,11 +291,42 @@
         L'objectiu final és <strong>reduir el temps dels operaris</strong> que preparen
         palets: menys decisions manuals, menys errors, més informació visible.
     </p>
-    <p>L'aplicació té dos rols:</p>
-    <ul>
-        <li><strong>Oficina</strong> — selecciona les càrregues, genera l'agrupació, la imprimeix o la desa.</li>
-        <li><strong>Magatzem</strong> — obre una agrupació desada al tablet i marca cada producte com a "preparat" a mesura que el carrega.</li>
-    </ul>
+    <p>L'aplicació té <strong>tres rols d'usuari</strong>, amb permisos diferents:</p>
+    <table class="help-table">
+        <thead>
+            <tr><th>Rol</th><th>Què pot fer</th><th>Inici quan entra</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Administrador</strong></td>
+                <td>Tot. A més té un botó <strong>⚙</strong> al header per gestionar usuaris (crear, editar, canviar contrasenya, desactivar).</td>
+                <td>Pàgina principal (cerca i agrupació).</td>
+            </tr>
+            <tr>
+                <td><strong>Oficina</strong></td>
+                <td>Selecciona càrregues, fa agrupacions, les desa i les imprimeix. Calendari i checklist del magatzem en lectura.</td>
+                <td>Pàgina principal.</td>
+            </tr>
+            <tr>
+                <td><strong>Magatzem</strong></td>
+                <td>Obre una agrupació al tablet i marca productes com a "preparats" a mesura que els carrega. Pot desfer les seves marques. No pot crear ni eliminar agrupacions ni veure la cerca de càrregues.</td>
+                <td>Directament a <code>/magatzem</code> (llista d'agrupacions pendents).</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Inici de sessió</h3>
+    <p>
+        Quan obres l'app per primer cop, et demana <strong>usuari i contrasenya</strong>. La sessió dura
+        <strong>12 hores</strong>. Pots tancar-la manualment amb el botó <strong>⎋</strong> al header
+        (al costat del teu nom).
+    </p>
+
+    <div class="help-info">
+        <strong>Gestió d'usuaris (només administradors):</strong> a <code>/admin/usuaris</code> (botó ⚙ al header)
+        pots crear comptes nous, canviar contrasenyes i activar/desactivar usuaris. Les desactivacions
+        no esborren l'usuari — així conservem la traçabilitat al log d'auditoria.
+    </div>
 
     <!-- 2. Pantalla principal -->
     <h2 id="oficina">2. Pantalla principal (oficina)</h2>
@@ -340,6 +371,17 @@
                 <span>Transportes Escapa</span>
                 <span><span class="mockup-pill">Mascó dilluns</span></span>
             </div>
+            <div class="mockup-row" style="background:#ffe4b8;">
+                <span>☐</span>
+                <span>
+                    <span class="mockup-cell-code">2026/01/0002209</span>
+                    <span class="mockup-badge" style="margin-left:.3rem; background:#d97706; color:#fff;">Agrupada (en preparació · 4/15)</span>
+                </span>
+                <span>ESCAPA PAL HIND</span>
+                <span>12-06-2026</span>
+                <span>Transportes Escapa</span>
+                <span><span class="mockup-pill" style="background:#ffedd5; border-color:#d97706;">Hindupack</span></span>
+            </div>
             <div class="mockup-row is-acabada">
                 <span>☐</span>
                 <span>
@@ -360,7 +402,14 @@
     </ul>
 
     <div class="help-info">
-        <strong>Pic verd ✓ vs Pic groc ●:</strong> el verd indica que l'agrupació ja s'ha completat al magatzem (tots els productes preparats); el groc, que encara està activa. <strong>En ambdós casos la càrrega està bloquejada</strong> per no poder duplicar-la.
+        <strong>Tres estats visuals d'agrupació:</strong>
+        <ul style="margin:.4rem 0 0; padding-left:1.25rem;">
+            <li><strong style="color:var(--warning);">● Pic groc / fila groga</strong> — <em>Ja agrupada</em>. L'agrupació existeix però cap producte s'ha preparat encara al magatzem.</li>
+            <li><strong style="color:#d97706;">◐ Pic ambar / fila ambar</strong> — <em>Agrupada (en preparació · N/total)</em>. El magatzem ja ha començat a marcar productes com a preparats.</li>
+            <li><strong style="color:var(--success-strong);">✓ Pic verd / fila verda</strong> — <em>Agrupada (acabada)</em>. Tots els productes preparats; la feina al magatzem és feta.</li>
+        </ul>
+        <p style="margin:.5rem 0 0;">En tots tres casos la càrrega <strong>està bloquejada</strong> per no poder duplicar-la.</p>
+        <p style="margin:.3rem 0 0;">La llista <strong>s'actualitza automàticament cada 5 segons</strong> sense que hagis de refrescar — quan algú del magatzem marca un producte, ho veuràs reflectit immediatament.</p>
     </div>
 
     <h3>2.3 Seleccionar càrregues</h3>
@@ -423,6 +472,12 @@
         <li><strong>Productes</strong> — taula ordenable per article, descripció, sacs, kg. Pots expandir cada producte per veure detalls per càrrega i el desglossament dels palets (amb albarà d'origen).</li>
         <li><strong>Incidències</strong> — si alguna càrrega no s'ha pogut processar, surt aquí (badge taronja); si tot ha anat bé, badge verd "Sense incidències".</li>
     </ul>
+
+    <div class="help-info">
+        <strong>✓ Productes ja preparats:</strong> si obres una agrupació desada que el magatzem està preparant,
+        cada producte que ja s'ha marcat al checklist surt amb un <strong style="color:var(--success);">✓ verd</strong>
+        davant del codi i fons verd suau a la fila. Així pots veure d'un cop d'ull què queda per preparar.
+    </div>
 
     <h3>Botons del modal</h3>
     <ul>
@@ -605,8 +660,20 @@
                 <td>Articles que l'operari ha marcat com a "ja carregats al palet" al magatzem. Persistents al servidor.</td>
             </tr>
             <tr>
-                <td><strong>Agrupació finalitzada (acabada)</strong></td>
-                <td>Aquella en què tots els productes han sigut marcats com a preparats.</td>
+                <td><strong>Estats d'una agrupació</strong></td>
+                <td>
+                    <em>Ja agrupada</em> (groc): cap producte preparat encara.<br>
+                    <em>En preparació</em> (ambar, N/total): el magatzem ja ha marcat alguns productes.<br>
+                    <em>Acabada</em> (verd): tots els productes preparats.
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Rol d'usuari</strong></td>
+                <td>
+                    <em>Admin</em>: tot + gestió d'usuaris (<code>/admin/usuaris</code>).<br>
+                    <em>Oficina</em>: cerca, agrupar, desar, eliminar.<br>
+                    <em>Magatzem</em>: només checklist a <code>/magatzem</code>.
+                </td>
             </tr>
             <tr>
                 <td><strong>Transportista</strong></td>

@@ -34,3 +34,6 @@ data/
 build/
 dist/
 *.egg-info/
+
+# PDFs externs guardats al docs/ que no pertanyen a aquest projecte
+docs/Manual_Recepcionista_Visites.pdf

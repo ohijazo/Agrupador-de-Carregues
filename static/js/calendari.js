@@ -403,17 +403,39 @@
                     badge.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">📦</span>${llista.length}`;
                     badge.title = `${llista.length} càrregues`;
                     head.appendChild(badge);
-
-                    const sumKg = llista.reduce((acc, c) => acc + kgDeCarrega(c), 0);
-                    if (sumKg > 0) {
-                        const kgSpan = document.createElement("span");
-                        kgSpan.className = "cal-cell-kg";
-                        kgSpan.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">⚖</span>${escapeHtml(fmtKg0.format(sumKg))} kg`;
-                        kgSpan.title = `Total: ${fmtKg2.format(sumKg)} kg`;
-                        head.appendChild(kgSpan);
-                    }
                 }
                 cell.appendChild(head);
+
+                // Desglossament de kg sota el dia: GRA · SACS · Total
+                if (llista.length > 0) {
+                    let kgGra = 0, kgSacs = 0;
+                    for (const c of llista) {
+                        const kg = kgDeCarrega(c);
+                        if (c.is_granel) kgGra += kg;
+                        else kgSacs += kg;
+                    }
+                    const kgTotal = kgGra + kgSacs;
+                    if (kgTotal > 0) {
+                        const kgBox = document.createElement("div");
+                        kgBox.className = "cal-cell-kgs";
+                        const parts = [];
+                        if (kgGra > 0) {
+                            parts.push(`<span class="cal-kg-line is-gra" title="Total kg granel: ${fmtKg2.format(kgGra)} kg">` +
+                                       `<span class="cal-kg-lbl">GRA</span>` +
+                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgGra))}</span></span>`);
+                        }
+                        if (kgSacs > 0) {
+                            parts.push(`<span class="cal-kg-line is-sacs" title="Total kg sacs: ${fmtKg2.format(kgSacs)} kg">` +
+                                       `<span class="cal-kg-lbl">SACS</span>` +
+                                       `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgSacs))}</span></span>`);
+                        }
+                        parts.push(`<span class="cal-kg-line is-total" title="Total kg: ${fmtKg2.format(kgTotal)} kg">` +
+                                   `<span class="cal-kg-lbl">Total</span>` +
+                                   `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(kgTotal))}</span></span>`);
+                        kgBox.innerHTML = parts.join("");
+                        cell.appendChild(kgBox);
+                    }
+                }
 
                 if (llista.length > 0) {
                     const ul = document.createElement("ul");

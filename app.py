@@ -389,6 +389,11 @@ def api_admin_usuaris_password(id_):
 
 @app.route("/")
 def index():
+    # Si l'usuari té rol 'magatzem', no té accés a la pàgina principal de
+    # cerca/agrupació — el redirigim al seu inici natural (llista de
+    # magatzem amb agrupacions pendents).
+    if auth.auth_enabled() and session.get("user_rol") == "magatzem":
+        return redirect(url_for("magatzem_llista"))
     avui = date.today()
     # Deep-link des de /calendari: ?desde=YYYY-MM-DD&fins=YYYY-MM-DD&focus=carrega_id
     desde_q = (request.args.get("desde") or "").strip()
@@ -426,6 +431,7 @@ def magatzem_prep(id_):
 
 
 @app.route("/api/transportistes")
+@auth.requires_rol("admin", "oficina")
 def api_transportistes():
     try:
         return jsonify(llistar_transportistes())
@@ -438,6 +444,7 @@ def api_transportistes():
 
 
 @app.route("/api/carregues")
+@auth.requires_rol("admin", "oficina")
 def api_carregues():
     rang, err = valida_rang_dates(request.args.get("desde"), request.args.get("fins"))
     if err:
@@ -496,6 +503,7 @@ def api_carregues():
 
 
 @app.route("/api/estats-carregues")
+@auth.requires_rol("admin", "oficina")
 def api_estats_carregues():
     try:
         return jsonify(llistar_estats_carregues())
@@ -508,6 +516,7 @@ def api_estats_carregues():
 
 
 @app.route("/api/articles")
+@auth.requires_rol("admin", "oficina")
 def api_articles():
     q, err = valida_codi(request.args.get("q"), "q", max_len=40, obligatori=False)
     # `valida_codi` rebutja espais; per a la cerca d'articles deixem accents/espais. Provem directament.
@@ -534,6 +543,7 @@ def api_agrupacions_llista():
 
 
 @app.route("/api/agrupacions", methods=["POST"])
+@auth.requires_rol("admin", "oficina")
 def api_agrupacions_guardar():
     body = request.get_json(silent=True) or {}
     nom = (body.get("nom") or "").strip()
@@ -561,6 +571,7 @@ def api_agrupacions_guardar():
 
 
 @app.route("/api/plantilles", methods=["GET"])
+@auth.requires_rol("admin", "oficina")
 def api_plantilles_llista():
     try:
         return jsonify(agrupacions_store.llistar_plantilles())
@@ -578,6 +589,7 @@ def api_agrupacions_obtenir(id_):
 
 
 @app.route("/api/agrupacions/<id_>", methods=["DELETE"])
+@auth.requires_rol("admin", "oficina")
 def api_agrupacions_eliminar(id_):
     if agrupacions_store.eliminar(id_):
         log.info("audit eliminar agrupacio=%s ip=%s", id_, request.remote_addr)
@@ -620,6 +632,7 @@ def api_agrupacions_reset_preparats(id_):
 
 
 @app.route("/api/carrega-detall")
+@auth.requires_rol("admin", "oficina")
 def api_carrega_detall():
     eje, err = valida_codi(request.args.get("eje"), "eje", max_len=4)
     if err:
@@ -641,6 +654,7 @@ def api_carrega_detall():
 
 
 @app.route("/api/agrupar", methods=["POST"])
+@auth.requires_rol("admin", "oficina")
 def api_agrupar():
     body = request.get_json(silent=True) or {}
     carregues, err = valida_llista_carregues(body.get("carregues"))

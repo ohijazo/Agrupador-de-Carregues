@@ -17,7 +17,7 @@ from logging.handlers import RotatingFileHandler
 from threading import Lock
 
 import pyodbc
-from flask import Flask, jsonify, make_response, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, make_response, redirect, render_template, request, send_from_directory, session, url_for
 
 # --- Bootstrap .env i sys.path ABANS d'importar agregador ----------------
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -232,7 +232,7 @@ from errors import err_generic as _err_genèric  # noqa: E402
 # Si `AUTH_ENABLED=true` al .env, tots els endpoints excepte els llistats a
 # `_AUTH_PUBLIC_PREFIXES` requereixen sessió. Per a `/api/*` retorna 401
 # (JSON); per a la resta redirigeix a /login.
-_AUTH_PUBLIC_PREFIXES = ("/login", "/logout", "/static", "/health", "/api/pbi", "/api/me")
+_AUTH_PUBLIC_PREFIXES = ("/login", "/logout", "/static", "/health", "/api/pbi", "/api/me", "/favicon.ico")
 
 
 @app.before_request
@@ -416,6 +416,11 @@ def api_admin_usuaris_password(id_):
     except Exception:
         log.exception("admin_usuaris password")
         return _err_genèric()
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(app.static_folder, "favicon.svg", mimetype="image/svg+xml")
 
 
 @app.route("/")

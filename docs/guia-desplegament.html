@@ -362,7 +362,16 @@ sudo chown www-data:www-data /var/www/agrupacio-carregues/.env</code></pre>
 sudo -u www-data python3 -m venv venv
 sudo -u www-data venv/bin/pip install --upgrade pip
 sudo -u www-data venv/bin/pip install -r requirements.txt
-sudo -u www-data venv/bin/pip install gunicorn</code></pre>
+sudo -u www-data venv/bin/pip install gunicorn
+
+# IMPORTANT: tambe cal instal·lar les depend&egrave;ncies de l'app germana
+# (Comandes Venda) al mateix venv, perqu&egrave; motor.py les importa.
+# Si no, /health retornara motor.ok=false amb ModuleNotFoundError.
+sudo -u www-data venv/bin/pip install -r /var/www/comandes-venda/requirements.txt</code></pre>
+
+<div class="warning">
+    <strong>Per qu&egrave; el venv ha de tenir les depend&egrave;ncies de Comandes Venda?</strong> L'Agrupador importa <code>motor.py</code> de l'app germana via <code>sys.path</code>. Quan <code>motor</code> es carrega, importa <code>consultes</code>, <code>regles</code>, <code>models</code> i altres m&ograve;duls de Comandes Venda que tenen depend&egrave;ncies pr&ograve;pies (<code>openpyxl</code>, <code>pyodbc</code>, etc.). Aquestes han de ser disponibles al venv des d'on s'executa l'Agrupador.
+</div>
 
 <h3>6.6 Carregar l'esquema PostgreSQL</h3>
 <pre><code>cd /var/www/agrupacio-carregues

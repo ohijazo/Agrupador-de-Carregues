@@ -393,10 +393,14 @@ sudo -u www-data venv/bin/python scripts/crear_admin.py
 </div>
 
 <h3>6.8 Verificar connexions a les dues BDs</h3>
+<div class="info">
+    <strong>Important:</strong> els scripts comencen per <code>import app</code> per for&ccedil;ar la c&agrave;rrega del <code>.env</code>. Si fas <code>import db</code> o <code>import consultes_carregues</code> directament sense importar abans <code>app</code>, les variables d'entorn no estan llegides i fallar&aacute; amb "PG_HOST no est&agrave; configurat".
+</div>
 <pre><code>cd /var/www/agrupacio-carregues
 
 # 1) Connexi&oacute; a SQL Server
 sudo -u www-data venv/bin/python -c "
+import app
 from consultes_carregues import connectar
 conn = connectar()
 conn.execute('SELECT 1').fetchone()
@@ -406,6 +410,7 @@ conn.close()
 
 # 2) Connexi&oacute; a PostgreSQL
 sudo -u www-data venv/bin/python -c "
+import app
 import db
 ok, msg = db.health_ok()
 print('PostgreSQL OK' if ok else 'PostgreSQL FAIL: ' + msg)

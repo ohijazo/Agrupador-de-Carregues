@@ -267,7 +267,7 @@ from errors import err_generic as _err_genèric  # noqa: E402
 # Si `AUTH_ENABLED=true` al .env, tots els endpoints excepte els llistats a
 # `_AUTH_PUBLIC_PREFIXES` requereixen sessió. Per a `/api/*` retorna 401
 # (JSON); per a la resta redirigeix a /login.
-_AUTH_PUBLIC_PREFIXES = ("/login", "/logout", "/static", "/health", "/api/pbi", "/api/me", "/favicon.ico")
+_AUTH_PUBLIC_PREFIXES = ("/login", "/logout", "/static", "/health", "/api/pbi", "/api/me", "/favicon.ico", "/calendari", "/api/carregues")
 
 
 @app.before_request
@@ -515,7 +515,6 @@ def api_transportistes():
 
 
 @app.route("/api/carregues")
-@auth.requires_rol("admin", "oficina")
 def api_carregues():
     rang, err = valida_rang_dates(request.args.get("desde"), request.args.get("fins"))
     if err:

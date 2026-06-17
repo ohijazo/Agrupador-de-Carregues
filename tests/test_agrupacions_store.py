@@ -229,3 +229,74 @@ def test_llistar_plantilles_amb_transportistes(store_tmp):
     plantilles = agrupacions_store.llistar_plantilles()
     assert plantilles[0]["transportistes"][0]["tra_codi"] == "T01"
     assert plantilles[0]["transportistes"][0]["tra_nom"] == "Trans U"
+
+
+# --- Comptador de versió compartit (sincronitza workers Gunicorn) ---------
+
+def test_version_creix_amb_cada_escriptura(store_tmp):
+    """Cada operació d'escriptura ha de bumpar el comptador a la BD."""
+    v0 = agrupacions_store.get_version()
+    info = agrupacions_store.guardar("V", [_carrega()], _resultat(("A", "B")))
+    v1 = agrupacions_store.get_version()
+    assert v1 > v0
+
+    agrupacions_store.marca_producte(info["id"], "A", True)
+    v2 = agrupacions_store.get_version()
+    assert v2 > v1
+
+    agrupacions_store.marca_producte(info["id"], "A", False)
+    v3 = agrupacions_store.get_version()
+    assert v3 > v2
+
+    agrupacions_store.reset_preparats(info["id"])
+    v4 = agrupacions_store.get_version()
+    assert v4 > v3
+
+    agrupacions_store.eliminar(info["id"])
+    v5 = agrupacions_store.get_version()
+    assert v5 > v4
+
+
+def test_cache_revalida_si_canvia_versio_BD_des_de_fora(store_tmp):
+    """Simula un altre worker Gunicorn: una escriptura externa al store
+    bumpa la versió a la BD; la propera lectura ha de refer el cache."""
+    import db
+
+    cid = "2026/01/0000321"
+    info = agrupacions_store.guardar("Inicial", [_carrega(cid)], _resultat(("X",)))
+    idx1 = agrupacions_store.index_carregues_agrupades()
+    assert info["id"] in {e["id"] for e in idx1.get(cid, [])}
+
+    # Cache local validada amb la versió actual. Simulem el cas "el cache del
+    # nostre worker es queda obsolet perquè un altre worker ha eliminat una
+    # agrupació": esborrem la fila i bumpem el comptador per fora del store.
+    db.execute("DELETE FROM agrupacions WHERE id = %s", (info["id"],))
+    db.execute("UPDATE meta_agrupacions SET version = version + 1 WHERE id = 1")
+
+    idx2 = agrupacions_store.index_carregues_agrupades()
+    assert info["id"] not in {e["id"] for e in idx2.get(cid, [])}
+
+
+def test_cache_hit_si_versio_no_canvia(store_tmp, monkeypatch):
+    """Dues lectures consecutives sense escriptures només han de fer la JOIN
+    una vegada — la segona ha de servir del cache local."""
+    import db
+    agrupacions_store.guardar("Cached", [_carrega("2026/01/0000777")], _resultat(("Z",)))
+
+    # Omple el cache amb la primera lectura
+    agrupacions_store.index_carregues_agrupades()
+
+    # Comptem quantes vegades es crida db.fetch_all amb la query de l'índex
+    calls = {"n": 0}
+    orig_fetch_all = db.fetch_all
+
+    def counting_fetch_all(sql, params=None):
+        if "agrupacio_carregues" in sql and "v_agrupacions_estat" in sql:
+            calls["n"] += 1
+        return orig_fetch_all(sql, params)
+
+    monkeypatch.setattr(db, "fetch_all", counting_fetch_all)
+
+    agrupacions_store.index_carregues_agrupades()
+    agrupacions_store.index_carregues_agrupades()
+    assert calls["n"] == 0, "El cache local hauria d'haver respost sense fer la JOIN"

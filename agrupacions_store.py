@@ -30,28 +30,48 @@ import db
 
 _RE_ID = re.compile(r"^[a-f0-9-]{8,40}$")
 
-# Cache de l'índex carrega_id -> [agrupacions]. Es recalcula quan canvia
-# l'índex de versió a PG (vegi `bump_index_version`). Thread-safe.
+# Cache local (per worker) de l'índex carrega_id -> [agrupacions].
+# La validesa es comprova contra el comptador global a la taula
+# `meta_agrupacions` de PostgreSQL — així workers Gunicorn diferents
+# es mantenen coherents sense compartir memòria.
 _index_cache: dict[str, list[dict]] | None = None
 _index_cache_version: int = -1
 _index_lock = Lock()
-_local_index_version = 0  # versió incrementada quan aquest procés escriu
 
 
-def _invalidar_index() -> None:
-    """Invalida el cache d'índex per al següent fetch."""
-    global _local_index_version
-    with _index_lock:
-        _local_index_version += 1
+def _bump_version(cur=None) -> None:
+    """Incrementa el comptador global de versió a la BD.
+
+    Si es passa un cursor de psycopg, el bump va dins de la mateixa
+    transacció que l'escriptura de dades (atòmic). Si no se'n passa cap,
+    obre una connexió pròpia i fa commit immediat (cas de fallback).
+    """
+    sql = "UPDATE meta_agrupacions SET version = version + 1 WHERE id = 1"
+    if cur is not None:
+        cur.execute(sql)
+    else:
+        db.execute(sql)
 
 
 def get_version() -> int:
-    """Versió actual de l'índex d'agrupacions. Augmenta cada cop que es desa,
-    elimina, marca o desmarca un producte preparat. El frontend pot fer
-    polling d'aquest valor per detectar canvis sense haver de re-baixar
-    la llista sencera."""
+    """Versió actual de l'índex d'agrupacions (llegida de la BD).
+
+    Augmenta cada cop que es desa, elimina, marca o desmarca un producte.
+    El frontend fa polling d'aquest valor per detectar canvis sense
+    re-baixar la llista sencera. Com que es llegeix de la BD, tots els
+    workers Gunicorn veuen el mateix valor.
+    """
+    r = db.fetch_one("SELECT version FROM meta_agrupacions WHERE id = 1")
+    return int(r["version"]) if r else 0
+
+
+def _clear_local_cache() -> None:
+    """Reseteja el cache local. Només per a tests — en producció el cache
+    s'invalida automàticament quan la versió de BD difereix de la cachejada."""
+    global _index_cache, _index_cache_version
     with _index_lock:
-        return _local_index_version
+        _index_cache = None
+        _index_cache_version = -1
 
 
 def _valida_id(id_: str) -> str:
@@ -106,7 +126,7 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
                         if c.get("carrega_id")
                     ],
                 )
-    _invalidar_index()
+            _bump_version(cur)
     audit.log(
         "agrupacio_desada",
         target=id_,
@@ -181,12 +201,14 @@ def eliminar(id_: str) -> bool:
         _valida_id(id_)
     except ValueError:
         return False
-    rows = db.execute("DELETE FROM agrupacions WHERE id = %s", (id_,))
-    if rows:
-        _invalidar_index()
-        audit.log("agrupacio_eliminada", target=id_)
-        return True
-    return False
+    with db.get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM agrupacions WHERE id = %s", (id_,))
+            if not cur.rowcount:
+                return False
+            _bump_version(cur)
+    audit.log("agrupacio_eliminada", target=id_)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +239,7 @@ def marca_producte(id_: str, art_codi: str, preparat: bool, ip: str | None = Non
                     "DELETE FROM productes_preparats WHERE agrupacio_id = %s AND art_codi = %s",
                     (id_, art_codi),
                 )
-    _invalidar_index()
+            _bump_version(cur)
     audit.log(
         "producte_marcat" if preparat else "producte_desmarcat",
         target=id_,
@@ -237,7 +259,7 @@ def reset_preparats(id_: str, ip: str | None = None) -> dict | None:
             if not cur.fetchone():
                 return None
             cur.execute("DELETE FROM productes_preparats WHERE agrupacio_id = %s", (id_,))
-    _invalidar_index()
+            _bump_version(cur)
     audit.log("preparats_reset", target=id_)
     return obtenir(id_)
 
@@ -246,12 +268,21 @@ def reset_preparats(id_: str, ip: str | None = None) -> dict | None:
 # Índex carrega_id -> agrupacions actives/finalitzades
 # ---------------------------------------------------------------------------
 def index_carregues_agrupades() -> dict[str, list[dict]]:
-    """Per a cada carrega_id, retorna les agrupacions on apareix."""
+    """Per a cada carrega_id, retorna les agrupacions on apareix.
+
+    El cache local es valida contra el comptador de versió global a la BD,
+    de manera que tots els workers Gunicorn detecten les escriptures fetes
+    pels altres.
+    """
     global _index_cache, _index_cache_version
+
+    # Fast-path: si el cache local és vàlid contra la BD, retorna directament
+    db_v = get_version()
     with _index_lock:
-        if _index_cache is not None and _index_cache_version == _local_index_version:
+        if _index_cache is not None and _index_cache_version == db_v:
             return _index_cache
 
+    # Refetch sense lock — no bloquegem altres lectors mentre fem la JOIN
     sql = """
         SELECT ac.carrega_id, v.id, v.nom, v.ts, v.finalitzada,
                v.n_productes, v.n_preparats
@@ -269,9 +300,13 @@ def index_carregues_agrupades() -> dict[str, list[dict]]:
             "n_productes": int(r["n_productes"] or 0),
             "n_preparats": int(r["n_preparats"] or 0),
         })
+
+    # Re-llegim la versió després del fetch: si entremig algú ha escrit,
+    # la propera trucada veurà cached_v != db_v i tornarà a refrescar.
+    new_db_v = get_version()
     with _index_lock:
         _index_cache = index
-        _index_cache_version = _local_index_version
+        _index_cache_version = new_db_v
     return index
 
 

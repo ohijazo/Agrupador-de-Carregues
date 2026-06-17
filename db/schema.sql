@@ -54,6 +54,21 @@ CREATE INDEX IF NOT EXISTS idx_agrupacio_carregues_carrega ON agrupacio_carregue
 CREATE INDEX IF NOT EXISTS idx_agrupacio_carregues_tra     ON agrupacio_carregues (tra_codi);
 
 -- ---------------------------------------------------------------------------
+-- Comptador global de versió. Una sola fila (id = 1). S'incrementa
+-- atòmicament dins de cada transacció que escriu a `agrupacions`,
+-- `agrupacio_carregues` o `productes_preparats`. Permet que workers
+-- Gunicorn diferents detectin canvis fets pels altres workers sense
+-- compartir memòria (el cache d'index_carregues_agrupades es valida
+-- contra aquesta versió).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS meta_agrupacions (
+    id      SMALLINT  PRIMARY KEY CHECK (id = 1),
+    version BIGINT    NOT NULL DEFAULT 0
+);
+INSERT INTO meta_agrupacions (id, version) VALUES (1, 0)
+ON CONFLICT (id) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
 -- Usuaris locals (Phase D de seguretat). Login via password_hash PBKDF2-SHA256.
 -- Rol controla l'accés a recursos d'administració. `actiu = FALSE` bloqueja
 -- el login sense haver d'esborrar la fila (conservem audit history).

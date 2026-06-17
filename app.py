@@ -85,6 +85,37 @@ app.config.update(
 import auth  # noqa: E402
 
 
+# --- Bootstrap de la taula del comptador de versió -----------------------
+# Crea la taula `meta_agrupacions` i la fila (id=1) si no existeixen, perquè
+# els workers Gunicorn puguin sincronitzar la cache d'índex via la BD sense
+# que l'admin hagi de córrer migracions manuals. Idempotent.
+def _bootstrap_meta_agrupacions() -> None:
+    import db  # local import: PG pot no estar configurat en certs entorns de test
+    if not os.environ.get("PG_HOST"):
+        return
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS meta_agrupacions (
+                        id      SMALLINT  PRIMARY KEY CHECK (id = 1),
+                        version BIGINT    NOT NULL DEFAULT 0
+                    )
+                    """
+                )
+                cur.execute(
+                    "INSERT INTO meta_agrupacions (id, version) VALUES (1, 0) "
+                    "ON CONFLICT (id) DO NOTHING"
+                )
+        log.info("meta_agrupacions: taula i fila inicialitzades")
+    except Exception:
+        log.exception("No s'ha pogut inicialitzar meta_agrupacions")
+
+
+_bootstrap_meta_agrupacions()
+
+
 # --- Cache-busting d'assets ----------------------------------------------
 @app.context_processor
 def _inject_static_helper():

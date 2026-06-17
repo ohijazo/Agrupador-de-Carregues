@@ -41,7 +41,7 @@ def store_tmp(monkeypatch):
     import agrupacions_store
 
     # Reseteja el cache d'índex en memòria
-    agrupacions_store._invalidar_index()
+    agrupacions_store._clear_local_cache()
 
     # Buida les taules (CASCADE neteja les filles automàticament)
     with db.get_conn() as conn:
@@ -53,7 +53,7 @@ def store_tmp(monkeypatch):
     with db.get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("TRUNCATE agrupacions CASCADE")
-    agrupacions_store._invalidar_index()
+    agrupacions_store._clear_local_cache()
 
 
 # Marca tot el mòdul tests/test_agrupacions_store i tests/test_endpoints com a NEEDS_PG

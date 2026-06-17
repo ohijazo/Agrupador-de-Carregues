@@ -215,7 +215,10 @@ function btnLoading(btn, loading, labelOnLoad) {
 // ============================================================
 // Filtres ràpids de dates
 // ============================================================
-function toISO(d) { return d.toISOString().slice(0, 10); }
+function toISO(d) {
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 function calcRang(tipus) {
     const avui = new Date();
     avui.setHours(0,0,0,0);

@@ -1055,15 +1055,15 @@ body.is-resizing-col * { cursor: col-resize !important; }
 
 /* --- Detall càrrega (preview) --- */
 .detall-resum { margin: 0 0 .65rem; font-size: .85rem; }
-.albara-block {
+.comanda-block {
     background: #fff;
     border: 1px solid var(--gray-200);
     border-radius: var(--radius-md);
     padding: .55rem .8rem;
     margin-bottom: .55rem;
 }
-.albara-block:last-child { margin-bottom: 0; }
-.albara-block h4 {
+.comanda-block:last-child { margin-bottom: 0; }
+.comanda-block h4 {
     margin: 0 0 .4rem;
     font-size: .9rem;
     color: var(--gray-900);
@@ -1075,7 +1075,7 @@ body.is-resizing-col * { cursor: col-resize !important; }
 .data-table-mini { font-size: .82rem; }
 .data-table-mini th, .data-table-mini td { padding: .3rem .5rem; }
 
-.albara-pobla {
+.comanda-pobla {
     color: var(--gray-700);
     font-weight: 500;
     font-size: .85rem;
@@ -1377,7 +1377,7 @@ body.is-resizing-col * { cursor: col-resize !important; }
     gap: .25rem .4rem;
     min-width: 0;
 }
-.palet-item .palet-albara {
+.palet-item .palet-comanda {
     font-size: .74rem;
     color: var(--gray-700);
     background: var(--gray-50);
@@ -1386,7 +1386,7 @@ body.is-resizing-col * { cursor: col-resize !important; }
     padding: .02rem .4rem .02rem .35rem;
     white-space: nowrap;
 }
-.palet-item .palet-albara code {
+.palet-item .palet-comanda code {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: .72rem;
     color: var(--gray-900);

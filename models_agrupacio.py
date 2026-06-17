@@ -25,8 +25,8 @@ class PaletDetall:
     sacs: int                 # nombre de sacs d'aquest article en aquest palet
     sacs_x_base: int = 0      # sacs per capa/base del palet (com a l'app de comandes)
     max_sacs: int = 0         # capacitat màxima del palet
-    albara: str = ""          # "sal/cpa" — albarà o comanda d'origen
-    det_tipo: str = ""        # 'A' = albarà · 'P' = comanda pendent
+    comanda: str = ""         # "sal/cpa" — comanda d'origen (camp ERP: tipus 'A' o 'P')
+    det_tipo: str = ""        # 'A' o 'P' al sistema ERP (intern; per a la UI són totes "comanda")
 
 
 @dataclass
@@ -54,7 +54,7 @@ class AgrupacioProducte:
 @dataclass
 class Incidencia:
     carrega_id: str
-    albara: str               # "sal/cpa"
+    comanda: str              # "sal/cpa"
     tipus: str                # 'error' | 'warning'
     missatge: str
 

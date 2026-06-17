@@ -1,8 +1,8 @@
 """Lògica d'agrupació de càrregues.
 
 Per a cada càrrega seleccionada:
-  1. Llegeix els albarans (Detcargas).
-  2. Per a cada albarà, crida motor.calcular_embalatges() de l'app germana.
+  1. Llegeix les comandes (Detcargas).
+  2. Per a cada comanda, crida motor.calcular_embalatges() de l'app germana.
   3. Acumula els embalatges per (art_codi, transportista).
 
 El motor s'importa via sys.path injectat a app.py.
@@ -10,7 +10,7 @@ El motor s'importa via sys.path injectat a app.py.
 from collections import defaultdict
 from typing import Iterable
 
-from consultes_carregues import obtenir_albarans_carrega, obtenir_descrip_articles
+from consultes_carregues import obtenir_comandes_carrega, obtenir_descrip_articles
 from models_agrupacio import (
     AgrupacioProducte, CarregaPerProducte, CarregaResumen,
     Incidencia, PaletDetall, ResultatAgrupacio, TipusPaletRecompte,
@@ -41,8 +41,8 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
 
     resultat = ResultatAgrupacio()
 
-    # Cache d'albarans (eje, sal, cpa) per evitar recalcular si surt 2 cops.
-    cache_albara: dict[tuple[str, str, str], object] = {}
+    # Cache de comandes (eje, sal, cpa) per evitar recalcular si surt 2 cops.
+    cache_comanda: dict[tuple[str, str, str], object] = {}
 
     # Estructura intermèdia: (art_codi) -> {
     #     "descrip", "tunitat",
@@ -68,37 +68,37 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
             descripcio=c.get("car_descripcion", ""),
         ))
 
-        albarans = obtenir_albarans_carrega(
+        comandes = obtenir_comandes_carrega(
             c["eje_ejercicio"], c["sca_serie"], c["car_numero"]
         )
-        if not albarans:
+        if not comandes:
             resultat.incidencies.append(Incidencia(
                 carrega_id=c["carrega_id"],
-                albara="-",
+                comanda="-",
                 tipus="warning",
-                missatge="La càrrega no té albarans de tipus 'A' a Detcargas.",
+                missatge="La càrrega no té comandes a Detcargas.",
             ))
             continue
 
-        for a in albarans:
+        for a in comandes:
             key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"])
             try:
-                if key in cache_albara:
-                    res = cache_albara[key]
+                if key in cache_comanda:
+                    res = cache_comanda[key]
                 else:
                     res = calcular_embalatges(a["sal_codigo"], a["cpa_albara"])
-                    cache_albara[key] = res
+                    cache_comanda[key] = res
             except Exception as e:
                 resultat.incidencies.append(Incidencia(
                     carrega_id=c["carrega_id"],
-                    albara=f"{a['sal_codigo']}/{a['cpa_albara']}",
+                    comanda=f"{a['sal_codigo']}/{a['cpa_albara']}",
                     tipus="error",
                     missatge=f"Error calculant: {e}",
                 ))
                 continue
 
             # Defensiu: si el motor retorna None (no només excepció) registrem
-            # la incidència i continuem amb el següent albarà sense petar.
+            # la incidència i continuem amb la següent comanda sense petar.
             if res is None or not getattr(res, "embalatges", None):
                 estat_str = "-"
                 if res is not None:
@@ -106,7 +106,7 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                     estat_str = estat_attr.value if hasattr(estat_attr, "value") else str(estat_attr)
                 resultat.incidencies.append(Incidencia(
                     carrega_id=c["carrega_id"],
-                    albara=f"{a['sal_codigo']}/{a['cpa_albara']}",
+                    comanda=f"{a['sal_codigo']}/{a['cpa_albara']}",
                     tipus="warning",
                     missatge=f"Sense embalatges calculables (estat: {estat_str}).",
                 ))
@@ -176,7 +176,7 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                         sacs=sacs,
                         sacs_x_base=base_efectiva,
                         max_sacs=int(emb.max_sacs or 0),
-                        albara=f"{a['sal_codigo']}/{a['cpa_albara']}",
+                        comanda=f"{a['sal_codigo']}/{a['cpa_albara']}",
                         det_tipo=a.get("det_tipo", ""),
                     ))
 

@@ -1,6 +1,6 @@
 """Tests d'agregador.agrupar — el flux que crida el motor d'embalatges.
 
-Es mockeja `motor.calcular_embalatges` i `obtenir_albarans_carrega` perquè
+Es mockeja `motor.calcular_embalatges` i `obtenir_comandes_carrega` perquè
 els tests no requereixin DB ni l'app germana.
 """
 import os
@@ -92,14 +92,14 @@ def _carrega(cid="2026/01/0000001", tra="TR1"):
 
 # --- Tests ---------------------------------------------------------------
 def test_agrupar_amb_resultat_normal():
-    """Un albarà torna 1 palet → resultat amb 1 producte i 1 palet físic."""
+    """Una comanda torna 1 palet → resultat amb 1 producte i 1 palet físic."""
     fake_motor = _setup_fake_motor()
     fake_motor.calcular_embalatges = lambda sal, cpa: FakeResultat(
         embalatges=[FakeEmbalatge(contingut=[FakeContingut("ART1", "Article test", sacs=10, sacs_x_base=5)])],
         linies=[FakeLinia("ART1", "Article test", "S25")],
         palets=[FakePaletResum("01030", "Palet test")],
     )
-    with patch("agregador.obtenir_albarans_carrega", return_value=[
+    with patch("agregador.obtenir_comandes_carrega", return_value=[
         {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
     ]):
         from agregador import agrupar
@@ -115,7 +115,7 @@ def test_agrupar_motor_torna_none_no_peta():
     """Si calcular_embalatges retorna None, registra incidència i continua."""
     fake_motor = _setup_fake_motor()
     fake_motor.calcular_embalatges = lambda sal, cpa: None
-    with patch("agregador.obtenir_albarans_carrega", return_value=[
+    with patch("agregador.obtenir_comandes_carrega", return_value=[
         {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
     ]):
         from agregador import agrupar
@@ -131,7 +131,7 @@ def test_agrupar_motor_peta_amb_excepcio():
     def boom(sal, cpa):
         raise RuntimeError("BD timeout")
     fake_motor.calcular_embalatges = boom
-    with patch("agregador.obtenir_albarans_carrega", return_value=[
+    with patch("agregador.obtenir_comandes_carrega", return_value=[
         {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
     ]):
         from agregador import agrupar
@@ -142,22 +142,22 @@ def test_agrupar_motor_peta_amb_excepcio():
     assert "BD timeout" in r.incidencies[0].missatge
 
 
-def test_agrupar_carrega_sense_albarans():
-    """Càrrega sense cap albarà a Detcargas → incidència warning."""
+def test_agrupar_carrega_sense_comandes():
+    """Càrrega sense cap comanda a Detcargas → incidència warning."""
     _setup_fake_motor()
-    with patch("agregador.obtenir_albarans_carrega", return_value=[]):
+    with patch("agregador.obtenir_comandes_carrega", return_value=[]):
         from agregador import agrupar
         r = agrupar([_carrega()])
     assert r.productes == []
     assert len(r.incidencies) == 1
-    assert "no té albarans" in r.incidencies[0].missatge
+    assert "no té comandes" in r.incidencies[0].missatge
 
 
 def test_agrupar_motor_torna_embalatges_buit():
     """Motor OK però sense embalatges → incidència warning."""
     fake_motor = _setup_fake_motor()
     fake_motor.calcular_embalatges = lambda sal, cpa: FakeResultat(embalatges=[])
-    with patch("agregador.obtenir_albarans_carrega", return_value=[
+    with patch("agregador.obtenir_comandes_carrega", return_value=[
         {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
     ]):
         from agregador import agrupar
@@ -167,8 +167,8 @@ def test_agrupar_motor_torna_embalatges_buit():
     assert r.incidencies[0].tipus == "warning"
 
 
-def test_agrupar_cache_albara_reutilitza_resultat():
-    """El mateix albarà compartit per 2 càrregues només es calcula 1 vegada."""
+def test_agrupar_cache_comanda_reutilitza_resultat():
+    """La mateixa comanda compartida per 2 càrregues només es calcula 1 vegada."""
     fake_motor = _setup_fake_motor()
     crides = []
     def comptar(sal, cpa):
@@ -179,8 +179,8 @@ def test_agrupar_cache_albara_reutilitza_resultat():
             palets=[FakePaletResum("01030", "P")],
         )
     fake_motor.calcular_embalatges = comptar
-    albara = {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
-    with patch("agregador.obtenir_albarans_carrega", return_value=[albara]):
+    comanda = {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
+    with patch("agregador.obtenir_comandes_carrega", return_value=[comanda]):
         from agregador import agrupar
         agrupar([_carrega("2026/01/0000001"), _carrega("2026/01/0000002")])
     assert len(crides) == 1

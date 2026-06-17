@@ -81,7 +81,7 @@ Per defecte escolta a `http://127.0.0.1:5001`. Si el port és ocupat, ajusta el 
 | GET | `/api/estats-carregues` | Estats distints de càrrega |
 | GET | `/api/articles?q=…` | Autocompletar articles (mín 2 caràcters) |
 | GET | `/api/carregues?desde&fins&tra_codi[]&estat&art_codi&limit&offset` | Llista paginada `{items,total,limit,offset}` |
-| GET | `/api/carrega-detall?eje&sca&car` | Preview albarans + línies d'una càrrega |
+| GET | `/api/carrega-detall?eje&sca&car` | Preview comandes + línies d'una càrrega |
 | POST | `/api/agrupar` | Recalcula agrupació (body: `{carregues: [...]}`) |
 | GET | `/api/agrupacions` | Llista resumida d'agrupacions desades |
 | POST | `/api/agrupacions` | Desa (body: `{nom, carregues, resultat}`) |
@@ -96,7 +96,7 @@ agrupacioCarregues/
 ├── app.py                      # Flask app + rutes + headers seguretat + logging rotat
 ├── valida.py                   # Validadors d'inputs (dates, codis, llistes)
 ├── agregador.py                # Lògica d'agrupació (orquestra el motor germà)
-├── consultes_carregues.py      # Queries SQL (càrregues, albarans, articles, estats)
+├── consultes_carregues.py      # Queries SQL (càrregues, comandes, articles, estats)
 ├── agrupacions_store.py        # CRUD a PostgreSQL de les agrupacions desades
 ├── db.py                       # Capa de connexió a PostgreSQL (pool psycopg)
 ├── db/schema.sql               # Schema PostgreSQL (3 taules + 1 vista)

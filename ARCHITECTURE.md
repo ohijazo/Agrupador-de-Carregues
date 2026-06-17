@@ -68,16 +68,16 @@ El càlcul d'embalatges es delega a una app germana (`preparacioComandesVenda`) 
   - `palletitzable` (existeix una línia amb `lin_unit > 0` i unitat ≠ UNI/GRA).
 
 - **`agregador.py`** — Per cada càrrega seleccionada:
-  1. Llegeix els albarans (Detcargas amb `det_tipo IN ('A','P')`).
-  2. Per cada albarà crida `motor.calcular_embalatges(sal, cpa)` de l'app germana — l'import és diferit i cau a `ModuleNotFoundError → 503` si l'app germana no és disponible.
+  1. Llegeix les comandes (Detcargas amb `det_tipo IN ('A','P')`).
+  2. Per cada comanda crida `motor.calcular_embalatges(sal, cpa)` de l'app germana — l'import és diferit i cau a `ModuleNotFoundError → 503` si l'app germana no és disponible.
   3. Acumula: `{producte → {càrrega → palets}}` + `{tipus_palet → {càrrega → quantitat}}`.
   4. Serialitza a JSON pla per al frontend.
 
 - **`agrupacions_store.py`** — CRUD a PostgreSQL.
   - `guardar` / `obtenir` / `eliminar` / `llistar` / `llistar_plantilles`.
   - `marca_producte`, `reset_preparats` (productes preparats per magatzem).
-  - `index_carregues_agrupades()` amb cache local: retorna `{carrega_id → [agrupacions]}`. La cache s'invalida amb `_invalidar_index()` quan hi ha escriptura.
-  - `get_version()`: comptador local que augmenta a cada invalidació. El frontend en fa polling lleuger per detectar canvis en temps real.
+  - `index_carregues_agrupades()` amb cache local per worker: retorna `{carrega_id → [agrupacions]}`. El cache es valida contra el comptador global a la taula `meta_agrupacions` de PostgreSQL — així workers Gunicorn diferents detecten les escriptures fets pels altres sense compartir memòria.
+  - `get_version()`: llegeix el comptador global de la BD. Cada escriptura el bumpa atòmicament dins la mateixa transacció (`_bump_version(cur)`). El frontend en fa polling lleuger per detectar canvis en temps real.
 
 - **`auth.py`** — Autenticació amb usuaris locals.
   - Hash: `pbkdf2_sha256$<iter>$<salt>$<hash>` (200k iter, sense dependències externes). Format extensible a Argon2/scrypt al futur.
@@ -173,7 +173,7 @@ Vanilla JS sense framework. Tres "modes":
 - Errors SQL Server retornen 503 "Error de connexió amb la base de dades"; el detall queda al log.
 - Si `motor.py` no es pot importar, l'agrupació retorna 503 "Motor no disponible".
 - Si `audit.log()` falla (PG caigut, taula absent), només `log.warning` — l'acció principal mai falla per culpa de l'audit.
-- Si la cache d'`index_carregues_agrupades` queda desincronitzada entre workers Gunicorn, els canvis es propaguen com a tard al següent refresc HTTP que toqui aquell worker.
+- La cache d'`index_carregues_agrupades` es valida contra el comptador global de versió a la taula `meta_agrupacions` (BD), així que workers Gunicorn diferents detecten les escriptures dels altres a la propera lectura.
 - El frontend mostra toasts al carregar si `/health` informa que alguna dependència està KO.
 
 ## Tests

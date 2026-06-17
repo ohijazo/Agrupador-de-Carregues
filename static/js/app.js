@@ -680,8 +680,8 @@ function crearFilaCarrega(c) {
     btnExpand.className = "toggle-btn";
     btnExpand.dataset.role = "carrega-expand";
     btnExpand.innerHTML = `<span aria-hidden="true">▶</span>`;
-    btnExpand.title = "Veure albarans i articles de la càrrega";
-    btnExpand.setAttribute("aria-label", "Mostra els albarans de la càrrega");
+    btnExpand.title = "Veure comandes i articles de la càrrega";
+    btnExpand.setAttribute("aria-label", "Mostra les comandes de la càrrega");
     btnExpand.setAttribute("aria-expanded", "false");
     tdExpand.appendChild(btnExpand);
     tr.appendChild(tdExpand);
@@ -953,10 +953,10 @@ async function toggleDetallCarrega(c, tr, btn) {
 }
 
 function renderDetallCarrega(data) {
-    if (!data.albarans || data.albarans.length === 0) {
-        return `<span class="muted">Aquesta càrrega no té albarans associats a Detcargas.</span>`;
+    if (!data.comandes || data.comandes.length === 0) {
+        return `<span class="muted">Aquesta càrrega no té comandes associades a Detcargas.</span>`;
     }
-    const blocks = data.albarans.map(a => {
+    const blocks = data.comandes.map(a => {
         const linies = a.linies.map(l => {
             const np = l.palletitzable === false;
             const cls = np ? ' class="not-palletitzable"' : '';
@@ -973,14 +973,14 @@ function renderDetallCarrega(data) {
         }).join("");
         const tipoBadge = a.det_tipo === "P"
             ? `<span class="badge badge-warn" title="Comanda pendent">P</span>`
-            : `<span class="badge badge-ok" title="Albarà">A</span>`;
+            : `<span class="badge badge-ok" title="Comanda">A</span>`;
         const poblaHtml = a.pobla
-            ? ` · <span class="albara-pobla" title="Població d'enviament"><span aria-hidden="true">📍</span> ${escapeHtml(a.pobla)}</span>`
+            ? ` · <span class="comanda-pobla" title="Població d'enviament"><span aria-hidden="true">📍</span> ${escapeHtml(a.pobla)}</span>`
             : "";
         return `
-            <div class="albara-block">
+            <div class="comanda-block">
                 <h4>
-                    <span><code>${escapeHtml(a.albara)}</code> ${tipoBadge} · ${escapeHtml(a.cli_codi)} ${escapeHtml(a.cli_nom)}${poblaHtml}</span>
+                    <span><code>${escapeHtml(a.comanda)}</code> ${tipoBadge} · ${escapeHtml(a.cli_codi)} ${escapeHtml(a.cli_nom)}${poblaHtml}</span>
                     <span class="muted">${fmt.format(a.total_sacs)} sacs · ${fmtKg.format(a.total_kg)} kg</span>
                 </h4>
                 <table class="data-table data-table-mini">
@@ -992,7 +992,7 @@ function renderDetallCarrega(data) {
     }).join("");
     return `
         <div class="detall-resum muted">
-            ${data.albarans.length} albarans · <strong>${fmt.format(data.total_sacs)}</strong> sacs · <strong>${fmtKg.format(data.total_kg)}</strong> kg
+            ${data.comandes.length} comandes · <strong>${fmt.format(data.total_sacs)}</strong> sacs · <strong>${fmtKg.format(data.total_kg)}</strong> kg
         </div>
         ${blocks}
     `;
@@ -1435,7 +1435,7 @@ function renderResultat(r) {
         for (const i of r.incidencies) {
             const li = document.createElement("li");
             li.className = i.tipus;
-            li.innerHTML = `<strong>${escapeHtml(i.carrega_id)}</strong> ${i.albara && i.albara !== "-" ? `· ${escapeHtml(i.albara)} ` : ""}— ${escapeHtml(i.missatge)}`;
+            li.innerHTML = `<strong>${escapeHtml(i.carrega_id)}</strong> ${i.comanda && i.comanda !== "-" ? `· ${escapeHtml(i.comanda)} ` : ""}— ${escapeHtml(i.missatge)}`;
             ul.appendChild(li);
         }
     } else {
@@ -1560,18 +1560,18 @@ function ordenarProductesPer(col) {
 function renderPerCarrega(p) {
     return p.per_carrega.map(pc => {
         const col = state.colorsCarrega.get(pc.carrega_id) || { color: "#718096", bg: "#fff" };
-        // Agrupar palets per (tipus_palet, sacs_x_base, sacs, albara, det_tipo).
-        // Palets idèntics del mateix albarà → "N × ...". Diferent albarà → línia separada.
+        // Agrupar palets per (tipus_palet, sacs_x_base, sacs, comanda, det_tipo).
+        // Palets idèntics de la mateixa comanda → "N × ...". Diferent comanda → línia separada.
         const agg = new Map();
         for (const pd of pc.palets) {
-            const k = `${pd.tipus_palet}||${pd.sacs_x_base || 0}||${pd.sacs}||${pd.albara || ""}||${pd.det_tipo || ""}`;
+            const k = `${pd.tipus_palet}||${pd.sacs_x_base || 0}||${pd.sacs}||${pd.comanda || ""}||${pd.det_tipo || ""}`;
             const cur = agg.get(k) || {
                 tipus_palet: pd.tipus_palet,
                 tipus_descrip: pd.tipus_palet_descrip,
                 sacs: pd.sacs,
                 sacs_x_base: pd.sacs_x_base || 0,
                 max_sacs: pd.max_sacs || 0,
-                albara: pd.albara || "",
+                comanda: pd.comanda || "",
                 det_tipo: pd.det_tipo || "",
                 n: 0,
             };
@@ -1579,19 +1579,18 @@ function renderPerCarrega(p) {
             agg.set(k, cur);
         }
         const palets = [...agg.values()]
-            .sort((a, b) => (a.albara || "").localeCompare(b.albara || "") || b.sacs - a.sacs)
+            .sort((a, b) => (a.comanda || "").localeCompare(b.comanda || "") || b.sacs - a.sacs)
             .map(x => {
                 const baseTxt = x.sacs_x_base > 0
                     ? ` <span class="palet-base">base ${x.sacs_x_base}</span>`
                     : "";
                 const pisos = x.sacs_x_base > 0 ? Math.ceil(x.sacs / x.sacs_x_base) : 0;
                 const pisosTxt = pisos > 0 ? ` · ${pisos} pis${pisos > 1 ? "os" : ""}` : "";
-                const albLabel = x.det_tipo === "P" ? "Comanda" : "Albarà";
-                const albTxt = x.albara
-                    ? `<span class="palet-albara" title="${albLabel} d'origen">${albLabel} <code>${escapeHtml(x.albara)}</code></span>`
+                const comTxt = x.comanda
+                    ? `<span class="palet-comanda" title="Comanda d'origen">Comanda <code>${escapeHtml(x.comanda)}</code></span>`
                     : "";
                 return `<li class="palet-item" style="--palet-color:${col.color};--palet-bg:${col.bg};">
-                    <span class="palet-main">${x.n} × ${escapeHtml(x.tipus_descrip || x.tipus_palet)}${baseTxt}${albTxt}</span>
+                    <span class="palet-main">${x.n} × ${escapeHtml(x.tipus_descrip || x.tipus_palet)}${baseTxt}${comTxt}</span>
                     <strong>${fmt.format(x.sacs)} sacs${pisosTxt}</strong>
                 </li>`;
             })
@@ -1615,7 +1614,7 @@ function exportarCsv() {
     if (!state.resultat) return;
     const r = state.resultat;
     const rows = [
-        ["Article", "Descripció", "TUnitat", "Total sacs", "Total kg", "Càrrega", "Transportista", "Albarà/Comanda", "Tipus doc", "Tipus palet", "Sacs palet", "Sacs x base", "Max sacs"],
+        ["Article", "Descripció", "TUnitat", "Total sacs", "Total kg", "Càrrega", "Transportista", "Comanda", "Tipus doc", "Tipus palet", "Sacs palet", "Sacs x base", "Max sacs"],
     ];
     for (const p of r.productes) {
         for (const pc of p.per_carrega) {
@@ -1624,7 +1623,7 @@ function exportarCsv() {
                     p.art_codi, p.art_descrip, p.tunitat,
                     p.total_sacs, p.total_kg.toFixed(2),
                     pc.carrega_id, pc.transportista,
-                    pd.albara || "", pd.det_tipo === "P" ? "Comanda" : (pd.det_tipo === "A" ? "Albarà" : ""),
+                    pd.comanda || "", pd.det_tipo === "P" ? "Comanda pendent" : (pd.det_tipo === "A" ? "Comanda" : ""),
                     pd.tipus_palet_descrip || pd.tipus_palet, pd.sacs,
                     pd.sacs_x_base || "", pd.max_sacs || "",
                 ]);

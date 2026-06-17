@@ -424,7 +424,7 @@
 
     <h3>2.4 Veure detall d'una càrrega (▶)</h3>
     <p>
-        Clica el triangle ▶ a l'esquerra d'una fila per veure tots els albarans i les seves
+        Clica el triangle ▶ a l'esquerra d'una fila per veure totes les comandes i les seves
         línies, incloent els articles, sacs i kg. Útil per inspeccionar el contingut abans
         d'agrupar.
     </p>
@@ -470,7 +470,7 @@
         <li><strong>KPIs</strong> — n. càrregues, productes, sacs, kg, palets físics.</li>
         <li><strong>Palets físics per tipus</strong> — quants palets de cada model físic (e.g. <code>PALET PLASTIC EUROPEU 120X80</code>) calen, amb el desglossament per càrrega (pic colorit).</li>
         <li><strong>Càrregues incloses</strong> — pastilles d'identificació coloritzades.</li>
-        <li><strong>Productes</strong> — taula ordenable per article, descripció, sacs, kg. Pots expandir cada producte per veure detalls per càrrega i el desglossament dels palets (amb albarà d'origen).</li>
+        <li><strong>Productes</strong> — taula ordenable per article, descripció, sacs, kg. Pots expandir cada producte per veure detalls per càrrega i el desglossament dels palets (amb comanda d'origen).</li>
         <li><strong>Incidències</strong> — si alguna càrrega no s'ha pogut processar, surt aquí (badge taronja); si tot ha anat bé, badge verd "Sense incidències".</li>
     </ul>
 
@@ -638,11 +638,11 @@
         <tbody>
             <tr>
                 <td><strong>Càrrega</strong></td>
-                <td>Una unitat de transport identificada per <code>EXERCICI/SÈRIE/NÚMERO</code>. Conté un o més albarans/comandes.</td>
+                <td>Una unitat de transport identificada per <code>EXERCICI/SÈRIE/NÚMERO</code>. Conté una o més comandes.</td>
             </tr>
             <tr>
-                <td><strong>Albarà / Comanda</strong></td>
-                <td>Document que pertany a una càrrega. Tipus <code>A</code> = albarà, <code>P</code> = comanda pendent.</td>
+                <td><strong>Comanda</strong></td>
+                <td>Document que pertany a una càrrega. A nivell ERP intern pot ser tipus <code>A</code> (comanda) o <code>P</code> (comanda pendent), però totes són comandes a efectes de preparació.</td>
             </tr>
             <tr>
                 <td><strong>Agrupació</strong></td>

@@ -70,16 +70,16 @@ def llistar_carregues(
     # oferir un filtre opcional "Amaga no-palletitzables".
     #
     # Una càrrega es considera "palletitzable" si té com a mínim una línia
-    # d'albarà amb tunitat != UNI/GRA i sacs > 0 (les mateixes regles que
+    # de comanda amb tunitat != UNI/GRA i sacs > 0 (les mateixes regles que
     # aplica el motor d'embalatges).
     # NOTA: el `sal_codigo` codificat a det_documento és la sèrie del PEDIDO
     # (sal_SerAlbDefPed); la sèrie real a ALBLINIA pot diferir. Per això
     # acceptem o sal directe o qualsevol sal mapejat via SERIEALB.
     # Resol primer la sal real (via CROSS APPLY amb CPALBARA) per evitar
-    # caçar línies d'un albarà d'una altra sèrie amb el mateix número.
-    # PRIORITAT: 1) tra_codi coincideix amb el de la càrrega (l'albarà real
+    # caçar línies d'una comanda d'una altra sèrie amb el mateix número.
+    # PRIORITAT: 1) tra_codi coincideix amb el de la càrrega (la comanda real
     # és del mateix transportista); 2) match directe (cas freqüent quan la
-    # sèrie del pedido coincideix amb la de l'albarà real).
+    # sèrie del pedido coincideix amb la de la comanda real).
     exists_palletizable_sql = """
         EXISTS (
             SELECT 1
@@ -116,7 +116,7 @@ def llistar_carregues(
     # IMPORTANT: per a cada det_documento resolem una sola `sal` real (via
     # CPALBARA, amb fallback a SERIEALB) ABANS de fer JOIN amb ALBLINIA.
     # Si juntem "sal directe OR sal via SERIEALB" directament al JOIN amb
-    # ALBLINIA, podem caçar un albarà DIFERENT que té el mateix número però
+    # ALBLINIA, podem caçar una comanda DIFERENT que té el mateix número però
     # a una altra sèrie i amb articles GRA — falsos positius.
     exists_granel_sql = """
         EXISTS (
@@ -135,7 +135,7 @@ def llistar_carregues(
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
                 -- Prioritat (mateix patró que els altres helpers):
-                -- 1) tra_codi coincident amb la càrrega → l'albarà real
+                -- 1) tra_codi coincident amb la càrrega → la comanda real
                 -- 2) sal directe → cas comú quan no hi ha SERIEALB diferencia
                 ORDER BY
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
@@ -192,7 +192,7 @@ def llistar_carregues(
     # IMPORTANT: per a cada det_documento resolem una sola `sal` real (via
     # CPALBARA, amb fallback a SERIEALB) ABANS d'agregar amb ALBLINIA. Si
     # juntem "sal directe OR sal via SERIEALB" al JOIN, comptaríem doble quan
-    # el mateix número d'albarà existeix en més d'una sèrie a ALBLINIA.
+    # el mateix número de comanda existeix en més d'una sèrie a ALBLINIA.
     kg_total_sql = """
         ISNULL((
             SELECT SUM(
@@ -219,7 +219,7 @@ def llistar_carregues(
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
                 -- Prioritat (mateix patró que els altres helpers):
-                -- 1) tra_codi coincident amb la càrrega → l'albarà real
+                -- 1) tra_codi coincident amb la càrrega → la comanda real
                 -- 2) sal directe → cas comú quan no hi ha SERIEALB diferencia
                 ORDER BY
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
@@ -384,8 +384,8 @@ def llistar_transportistes() -> list[dict]:
     return [{"tra_codi": r.tra_codi, "tra_nom": r.tra_nom or ""} for r in rows]
 
 
-def obtenir_albarans_carrega(eje: str, sca: str, car: str) -> list[dict]:
-    """Q2: Documents (tipus 'A' albarà o 'P' comanda) d'una càrrega.
+def obtenir_comandes_carrega(eje: str, sca: str, car: str) -> list[dict]:
+    """Q2: Comandes (Detcargas tipus 'A' o 'P') d'una càrrega.
 
     det_documento (varchar(13)) = eje(4) + sal_codigo(2) + cpa_albara(7).
     Format consistent per als dos tipus: 'A' i 'P' es passen igual a motor.calcular_embalatges()
@@ -432,13 +432,13 @@ def _pes_per_tunitat(tunitat: str) -> float:
 def resum_carrega(eje: str, sca: str, car: str) -> dict:
     """Previsualització lleugera del contingut d'una càrrega.
 
-    Retorna els albarans associats amb client + resum de línies (sense executar
+    Retorna les comandes associades amb client + resum de línies (sense executar
     el motor de càlcul d'embalatges). Pensat per inspeccionar abans de seleccionar.
 
     Output: {
-        "albarans": [
+        "comandes": [
             {
-                "albara": "01/0001234",
+                "comanda": "01/0001234",
                 "det_tipo": "A" | "P",
                 "cli_codi": "...",
                 "cli_nom": "...",
@@ -452,9 +452,9 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
         "total_kg": N.0,
     }
     """
-    albarans = obtenir_albarans_carrega(eje, sca, car)
-    if not albarans:
-        return {"albarans": [], "total_sacs": 0, "total_kg": 0.0}
+    comandes = obtenir_comandes_carrega(eje, sca, car)
+    if not comandes:
+        return {"comandes": [], "total_sacs": 0, "total_kg": 0.0}
 
     conn = connectar()
     try:
@@ -467,15 +467,15 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
         ).fetchone()
         carrega_tra_codi = (tra_row.tra_codi if tra_row else "") or ""
 
-        # Pas 1: resoldre la sèrie real (sal_real) per a cada albarà.
+        # Pas 1: resoldre la sèrie real (sal_real) per a cada comanda.
         # Detcargas codifica la sèrie del PEDIDO (sal_SerAlbDefPed); la comanda
         # real a CPALBARA/ALBLINIA pot tenir una sèrie diferent. SERIEALB és
         # la taula de mapeig, però per a un mateix sal_pedido pot haver-hi
         # múltiples sal_real possibles. Per discriminar, prioritzem:
-        #   1) match de tra_codi amb el de la càrrega (l'albarà real és del
+        #   1) match de tra_codi amb el de la càrrega (la comanda real és del
         #      mateix transportista que la càrrega).
         #   2) sal directe (cas freqüent quan no hi ha mapping a SERIEALB).
-        claus_doc = [(a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]) for a in albarans]
+        claus_doc = [(a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]) for a in comandes]
         values_sql = ",".join(["(CAST(? AS varchar(4)), CAST(? AS varchar(2)), CAST(? AS varchar(7)))"] * len(claus_doc))
         params_resolve: list = [carrega_tra_codi]  # primer param: tra_codi
         for k in claus_doc:
@@ -503,11 +503,11 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
                 -- Prioritat:
-                --   1) tra_codi coincident amb el de la càrrega → l'albarà real
+                --   1) tra_codi coincident amb el de la càrrega → la comanda real
                 --      (verificat amb 2026/01/0002269 MATAS tra=154 i
                 --       2026/02/0000208 NUTREX tra=100).
                 --   2) sal directe → cas comú quan la sèrie del pedido
-                --      coincideix amb la sèrie de l'albarà real.
+                --      coincideix amb la sèrie de la comanda real.
                 ORDER BY
                     CASE WHEN RTRIM(cp.tra_codi) = @carrega_tra THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
@@ -534,7 +534,7 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
         # Pas 2: buscar línies amb les (eje, sal_real, alb) resoltes.
         # LEFT JOIN ARTICLES per no perdre línies amb codi sense mestre.
         claus_real = set()
-        for a in albarans:
+        for a in comandes:
             res = resolts.get((a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]))
             sal_real = res["sal_real"] if res else a["sal_codigo"]
             claus_real.add((a["eje_ejercicio"], sal_real, a["cpa_albara"]))
@@ -560,13 +560,13 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
     finally:
         conn.close()
 
-    # Agrupar TOTES les línies per albarà; marquem cada una amb `palletitzable`
+    # Agrupar TOTES les línies per comanda; marquem cada una amb `palletitzable`
     # (palletitzable = tunitat != UNI/GRA i sacs > 0, mateixes regles que el motor).
     # Per al càlcul de kg:
     #   - tunitat Sxx (sacs): kg = sacs × pes_per_tunitat (S25 → 25, ...)
     #   - tunitat 'GRA' (granel): kg = lin_quan (pes directe en kg)
     #   - 'UNI' o desconegut: kg = 0
-    linies_per_alb: dict[tuple[str, str, str], list[dict]] = {}
+    linies_per_comanda: dict[tuple[str, str, str], list[dict]] = {}
     for r in lin_rows:
         tun = (r.tunitat or "").strip()
         sacs = int(r.sacs or 0)
@@ -579,7 +579,7 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
         else:
             kg = 0.0
         key = (r.eje_ejercicio, r.sal_codigo.strip(), r.cpa_albara.strip())
-        linies_per_alb.setdefault(key, []).append({
+        linies_per_comanda.setdefault(key, []).append({
             "art_codi": r.art_codi.strip() if r.art_codi else "",
             "art_descrip": (r.art_descrip or "").strip(),
             "sacs": sacs,
@@ -594,21 +594,21 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
     # qualsevol font: sacs palletitzables + granel.
     total_sacs = 0
     total_kg = 0.0
-    out_alb = []
-    for a in albarans:
+    out_com = []
+    for a in comandes:
         key_doc = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"])
         res = resolts.get(key_doc, {"sal_real": a["sal_codigo"], "cli_codi": "", "cli_nom": "", "pobla": ""})
         cli_codi = res["cli_codi"]
         cli_nom  = res["cli_nom"]
         pobla    = res.get("pobla", "")
         key_real = (a["eje_ejercicio"], res["sal_real"], a["cpa_albara"])
-        linies = linies_per_alb.get(key_real, [])
+        linies = linies_per_comanda.get(key_real, [])
         a_sacs = sum(l["sacs"] for l in linies if l["palletitzable"])
         a_kg = sum(l["kg"] for l in linies)
         total_sacs += a_sacs
         total_kg += a_kg
-        out_alb.append({
-            "albara": f"{a['sal_codigo']}/{a['cpa_albara']}",
+        out_com.append({
+            "comanda": f"{a['sal_codigo']}/{a['cpa_albara']}",
             "det_tipo": a["det_tipo"],
             "cli_codi": cli_codi,
             "cli_nom": cli_nom,
@@ -618,4 +618,4 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
             "linies": linies,
         })
 
-    return {"albarans": out_alb, "total_sacs": total_sacs, "total_kg": round(total_kg, 2)}
+    return {"comandes": out_com, "total_sacs": total_sacs, "total_kg": round(total_kg, 2)}

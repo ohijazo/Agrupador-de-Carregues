@@ -697,10 +697,10 @@
     }
 
     function renderDetallCarrega(data) {
-        if (!data.albarans || data.albarans.length === 0) {
-            return `<div class="muted">Aquesta càrrega no té albarans associats.</div>`;
+        if (!data.comandes || data.comandes.length === 0) {
+            return `<div class="muted">Aquesta càrrega no té comandes associades.</div>`;
         }
-        const blocks = data.albarans.map(a => {
+        const blocks = data.comandes.map(a => {
             const linies = a.linies.map(l => {
                 const np = l.palletitzable === false;
                 const cls = np ? ' class="not-palletitzable"' : '';
@@ -715,14 +715,14 @@
             }).join("");
             const tipoBadge = a.det_tipo === "P"
                 ? `<span class="badge badge-warn" title="Comanda pendent">P</span>`
-                : `<span class="badge badge-ok" title="Albarà">A</span>`;
+                : `<span class="badge badge-ok" title="Comanda">A</span>`;
             const poblaHtml = a.pobla
-                ? `<span class="albara-pobla" title="Població d'enviament"><span aria-hidden="true">📍</span> ${escapeHtml(a.pobla)}</span>`
+                ? `<span class="comanda-pobla" title="Població d'enviament"><span aria-hidden="true">📍</span> ${escapeHtml(a.pobla)}</span>`
                 : "";
             return `
-                <div class="albara-block">
+                <div class="comanda-block">
                     <h4>
-                        <span><code>${escapeHtml(a.albara)}</code> ${tipoBadge} · ${escapeHtml(a.cli_codi)} ${escapeHtml(a.cli_nom)}${poblaHtml ? " · " + poblaHtml : ""}</span>
+                        <span><code>${escapeHtml(a.comanda)}</code> ${tipoBadge} · ${escapeHtml(a.cli_codi)} ${escapeHtml(a.cli_nom)}${poblaHtml ? " · " + poblaHtml : ""}</span>
                         <span class="muted">${fmtNum.format(a.total_sacs)} sacs · ${fmtKg0.format(a.total_kg)} kg</span>
                     </h4>
                     <table class="data-table data-table-mini">
@@ -731,7 +731,7 @@
                     </table>
                 </div>`;
         }).join("");
-        return `<div class="detall-resum muted">${data.albarans.length} albarans · <strong>${fmtNum.format(data.total_sacs)}</strong> sacs · <strong>${fmtKg0.format(data.total_kg)}</strong> kg</div>${blocks}`;
+        return `<div class="detall-resum muted">${data.comandes.length} comandes · <strong>${fmtNum.format(data.total_sacs)}</strong> sacs · <strong>${fmtKg0.format(data.total_kg)}</strong> kg</div>${blocks}`;
     }
 
     function tancarModal() {

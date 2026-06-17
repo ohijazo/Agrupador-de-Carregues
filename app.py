@@ -139,14 +139,18 @@ def _slow_request_log(resp):
 @app.after_request
 def secure_headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
-    resp.headers["X-Frame-Options"] = "DENY"
+    # No s'emet X-Frame-Options perquè el calendari s'ha d'embeguir
+    # via iframe a l'app germana (comandes.agrienergia.local). X-Frame-Options
+    # no admet múltiples orígens; els navegadors moderns prioritzen
+    # `frame-ancestors` de CSP, que sí ho permet.
     resp.headers["Referrer-Policy"] = "no-referrer"
     resp.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
         "script-src 'self'; "
         "img-src 'self' data:; "
-        "frame-ancestors 'none';"
+        "frame-ancestors 'self' http://comandes.agrienergia.local "
+        "http://127.0.0.1:5001 http://localhost:5001;"
     )
     return resp
 

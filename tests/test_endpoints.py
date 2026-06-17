@@ -191,8 +191,11 @@ def test_index_te_csp_headers(client):
     assert r.status_code == 200
     csp = r.headers.get("Content-Security-Policy", "")
     assert "default-src 'self'" in csp
+    assert "frame-ancestors 'self' http://comandes.agrienergia.local " in csp
+    assert "http://127.0.0.1:5001" in csp
+    assert "http://localhost:5001" in csp
     assert r.headers.get("X-Content-Type-Options") == "nosniff"
-    assert r.headers.get("X-Frame-Options") == "DENY"
+    assert r.headers.get("X-Frame-Options") is None
 
 
 def test_magatzem_llista_render(client):

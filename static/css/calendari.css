@@ -411,115 +411,145 @@
     background: var(--primary);
 }
 
+/* Capçalera del dia: a l'esquerra el DL/15 (etiqueta + número gran),
+   a la dreta una columna meta amb el badge i els kg apilats. */
 .cal-cell-head {
     display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    gap: .4rem;
-    margin-bottom: .45rem;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: .5rem;
+    margin-bottom: .55rem;
 }
-
-/* Etiqueta del dia de la setmana (sempre visible a la cel·la) */
+.cal-cell-day-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    line-height: 1;
+}
 .cal-cell-day {
-    font-size: .7rem;
-    font-weight: 600;
+    font-size: .58rem;
+    font-weight: 700;
     color: var(--gray-500);
     text-transform: uppercase;
-    letter-spacing: .04em;
+    letter-spacing: .1em;
     line-height: 1;
-    margin-right: .1rem;
 }
-.cal-cell.is-today .cal-cell-day { color: var(--primary-dark); }
-
+.cal-cell.is-today .cal-cell-day { color: var(--primary); }
 .cal-cell-num {
-    font-size: .92rem;
+    font-size: 1.55rem;
     font-weight: 700;
-    color: var(--gray-700);
+    color: var(--gray-800);
     line-height: 1;
-    padding: .3rem .5rem;
-    border-radius: 50%;
-    min-width: 1.7rem;
-    text-align: center;
+    font-variant-numeric: tabular-nums;
+    transition: transform var(--transition-fast);
 }
+/* "Avui" — bombolla circular gran amb el color primary. Crida l'atenció
+   sense intervenir amb els colors per rang dels events. */
 .cal-cell.is-today .cal-cell-num {
-    background: var(--primary);
     color: #fff;
-    box-shadow: 0 2px 6px rgba(44, 82, 130, 0.35);
-}
-
-.cal-cell-badge {
+    background: var(--primary);
+    border-radius: 50%;
+    width: 2.1rem;
+    height: 2.1rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    font-size: 1.2rem;
+    font-weight: 800;
+    box-shadow: 0 0 0 3px rgba(44, 82, 130, 0.18), 0 4px 10px rgba(44, 82, 130, 0.35);
+}
+
+.cal-cell-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
     gap: .2rem;
-    min-width: 1.2rem;
-    height: 1.3rem;
-    padding: 0 .4rem;
-    font-size: .72rem;
+    min-width: 0;
+}
+.cal-cell-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    height: 1.1rem;
+    padding: 0 .45rem;
+    font-size: .68rem;
     font-weight: 700;
     color: var(--gray-700);
     background: var(--gray-100);
     border-radius: 999px;
     line-height: 1;
+    font-variant-numeric: tabular-nums;
 }
 .cal-cell-ico { font-size: .8rem; line-height: 1; }
 .cal-cell.is-today .cal-cell-badge {
-    background: var(--primary-light);
+    background: rgba(255,255,255,.85);
     color: var(--primary-dark);
 }
 
 .cal-cell-kg {
-    margin-left: auto;
     display: inline-flex;
     align-items: center;
     gap: .2rem;
-    font-size: .72rem;
-    color: var(--gray-500);
+    font-size: .68rem;
+    color: var(--gray-600);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
     white-space: nowrap;
 }
+.cal-cell.is-today .cal-cell-kg { color: var(--primary-dark); }
 
-/* Desglossament Kg al peu del dia: una sola fila SEMPRE.
-   Format quan hi ha tots dos: "GRA 23.780 Kg + SACS 154.190 Kg = 177.970 Kg".
-   Quan només n'hi ha un, només es mostra aquell. */
+/* Mini-card de desglossament Kg al peu del dia. Tres files possibles:
+   GRA · SACS · TOTAL. Mostrades en grid de 3 columnes (icona | label | valor),
+   amb la fila TOTAL separada per un border-top quan hi ha les altres dues. */
 .cal-cell-kgs {
     margin-top: auto;        /* empenta al peu de la cel·la */
-    padding-top: .35rem;
-    border-top: 1px solid var(--gray-200);
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: baseline;
-    gap: .25rem;
-    font-size: .62rem;
+    padding: .35rem .5rem;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    column-gap: .5rem;
+    row-gap: .15rem;
+    font-size: .68rem;
     font-variant-numeric: tabular-nums;
-    line-height: 1.2;
-    overflow: hidden;
+    line-height: 1.3;
 }
-.cal-kg-line {
-    display: inline-flex;
-    align-items: baseline;
-    gap: .2rem;
-    white-space: nowrap;
-}
-.cal-kg-op {
-    color: var(--gray-400);
-    font-weight: 600;
+.cal-kg-line { display: contents; }
+.cal-kg-line .cal-kg-ico {
+    font-size: .85rem;
+    line-height: 1;
+    color: var(--gray-500);
 }
 .cal-kg-line .cal-kg-lbl {
-    font-weight: 600;
+    font-weight: 700;
     color: var(--gray-500);
     text-transform: uppercase;
-    letter-spacing: .03em;
+    letter-spacing: .05em;
 }
 .cal-kg-line .cal-kg-val {
     font-weight: 600;
-    color: var(--gray-700);
+    color: var(--gray-800);
+    text-align: right;
+    white-space: nowrap;
 }
+.cal-kg-line.is-gra .cal-kg-ico,
 .cal-kg-line.is-gra .cal-kg-lbl,
 .cal-kg-line.is-gra .cal-kg-val { color: #047857; }
+/* TOTAL: subgrid amb border-top per a un divider net. */
+.cal-kg-line.is-total {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    column-gap: .5rem;
+    grid-column: 1 / -1;
+    margin-top: .15rem;
+    padding-top: .25rem;
+    border-top: 1px solid var(--gray-300);
+}
+.cal-kg-line.is-total .cal-kg-ico { color: var(--gray-700); }
+.cal-kg-line.is-total .cal-kg-lbl,
 .cal-kg-line.is-total .cal-kg-val {
-    font-weight: 700;
+    font-weight: 800;
     color: var(--gray-900);
 }
 
@@ -556,14 +586,19 @@
     justify-content: space-between;
     align-items: baseline;
     gap: .4rem;
-    padding: .3rem .55rem .3rem .5rem;
+    padding: .4rem .65rem .4rem .55rem;
     border-radius: var(--radius-sm);
     background: var(--primary-light);
     color: var(--primary-dark);
-    font-size: .78rem;
+    font-size: .85rem;
     line-height: 1.3;
     cursor: pointer;
-    transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast),
+                background var(--transition-fast), color var(--transition-fast),
+                filter var(--transition-fast);
     /* Border esquerra: color del transportista (cau a primary si no n'hi ha) */
     border-left: 3px solid var(--tra-color, var(--primary));
 }
@@ -579,14 +614,24 @@
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     pointer-events: none;
 }
+/* Hover genèric: NO toca el fons (cada rang manté el seu color); afegim
+   shadow i translateX per donar feedback sense amagar el codi de color. */
 .cal-evt:hover {
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .10);
+    filter: brightness(.97);
+}
+/* Hover per a esdeveniments del bloc "resta" (rang=6, sense regla per nom
+   ni codi): aquí sí canviem a primary perquè no hi ha color propi a tapar. */
+.cal-evt[data-rang="6"]:not(.is-no-palletitzable):not([data-tipus="granel"]):hover {
     background: var(--primary);
     color: #fff;
-    transform: translateX(2px);
+    filter: none;
 }
 .cal-evt:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 1px;
+    outline: 2.5px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(44, 82, 130, .15);
 }
 .cal-evt-nom {
     flex: 1;
@@ -599,7 +644,7 @@
 .cal-evt-kg {
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
-    font-size: .7rem;
+    font-size: .75rem;
     font-weight: 500;
     opacity: .85;
 }
@@ -937,6 +982,151 @@
 }
 @keyframes cal-spin { to { transform: rotate(360deg); } }
 
+/* --- Microetiqueta de rang dins una cel·la --------------------
+   Apareix abans del primer event de cada rang amb el nom curt del bloc.
+   Reforça visualment l'agrupació ja existent per color sense modificar-la.
+   pointer-events: none perquè el clic la travessi cap a la cel·la. */
+.cal-rang-label {
+    list-style: none;
+    font-size: .58rem;
+    font-weight: 800;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    padding: .2rem 0 .1rem;
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+}
+.cal-rang-label[data-rang="0"] { color: #047857; }
+.cal-rang-label[data-rang="1"] { color: #b91c1c; }
+.cal-rang-label[data-rang="2"] { color: #6d28d9; }
+.cal-rang-label[data-rang="3"] { color: #ca8a04; }
+.cal-rang-label[data-rang="4"] { color: #0e7490; }
+.cal-rang-label[data-rang="5"] { color: #be185d; }
+
+/* --- "+N càrregues més" — overflow controlat per cel·la ------- */
+.cal-evt-more {
+    list-style: none;
+    text-align: center;
+    padding: .3rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--gray-600);
+    background: var(--gray-50);
+    border: 1px dashed var(--gray-300);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast), color var(--transition-fast),
+                border-color var(--transition-fast);
+}
+.cal-evt-more:hover {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    border-color: var(--primary);
+}
+.cal-evt-more:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* --- Llista "Càrregues del dia" dins del modal --------------- */
+.cal-day-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+}
+.cal-day-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: baseline;
+    gap: .75rem;
+    padding: .55rem .7rem;
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-left: 3px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast),
+                border-color var(--transition-fast);
+}
+.cal-day-item:hover {
+    transform: translateX(3px);
+    box-shadow: var(--shadow-sm);
+    border-color: var(--gray-300);
+}
+.cal-day-item:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+.cal-day-item[data-rang="0"] { border-left-color: #047857; background: #ecfdf5; }
+.cal-day-item[data-rang="1"] { border-left-color: #b91c1c; background: #fef2f2; }
+.cal-day-item[data-rang="2"] { border-left-color: #6d28d9; background: #f5f3ff; }
+.cal-day-item[data-rang="3"] { border-left-color: #ca8a04; background: #fefce8; }
+.cal-day-item[data-rang="4"] { border-left-color: #0e7490; background: #ecfeff; }
+.cal-day-item[data-rang="5"] { border-left-color: #be185d; background: #fdf2f8; }
+.cal-day-nom {
+    font-weight: 600;
+    color: var(--gray-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.cal-day-tra { font-size: .8rem; }
+.cal-day-kg {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--gray-700);
+    white-space: nowrap;
+}
+
+/* --- Estilització dels botons de navegació de setmana --------
+   Diferencia visualment els 5 botons del .cal-nav: els de setmana són
+   més estrets i lleugers que els de mes, per indicar la diferent
+   "granularitat" sense afegir text llarg. */
+.cal-nav .cal-nav-mes { font-size: 1.05rem; font-weight: 600; }
+.cal-nav .cal-nav-setm {
+    min-width: 1.9rem;
+    padding: .4rem .55rem;
+    font-size: .95rem;
+    color: var(--gray-600);
+}
+.cal-nav .cal-nav-setm:hover { color: var(--primary-dark); background: #fff; }
+
+/* --- Microanimacions: entrades suaus del tooltip/picker/modal -- */
+@keyframes cal-pop-in {
+    from { opacity: 0; transform: scale(.95) translateY(4px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes cal-fade-down {
+    from { opacity: 0; transform: translate(-50%, -8px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.cal-picker:not([hidden]) { animation: cal-fade-down 160ms ease-out; }
+.cal-modal[open] { animation: cal-pop-in 180ms ease-out; }
+/* El tooltip ja té transition opacity+translateY; aquí mantenim aquell
+   comportament (és més suau quan canvia de posició entre events). */
+
+/* --- Setmana de focus (objectiu de navegació, no és 'avui') --- */
+.cal-cell.is-week-focus {
+    box-shadow: inset 0 0 0 1px rgba(44, 82, 130, .25);
+}
+
+/* --- Breakpoint tablet (701-1100px) — densitat intermèdia ----- */
+@media (max-width: 1100px) and (min-width: 701px) {
+    .cal-cell { min-height: 130px; }
+    .cal-cell-num { font-size: 1.3rem; }
+    .cal-cell.is-today .cal-cell-num { width: 1.9rem; height: 1.9rem; font-size: 1.05rem; }
+    .cal-evt { font-size: .8rem; padding: .3rem .5rem .3rem .45rem; }
+    .cal-evt-kg { font-size: .7rem; }
+    .cal-cell-kgs { font-size: .64rem; padding: .3rem .45rem; }
+}
+
 /* --- Responsive --------------------------------------------- */
 @media (max-width: 900px) {
     .cal-toolbar-row { gap: .65rem; }
@@ -948,25 +1138,39 @@
 
 @media (max-width: 700px) {
     .cal-cell { min-height: 96px; padding: .3rem; }
-    .cal-cell-head { margin-bottom: .25rem; gap: .25rem; }
-    .cal-cell-day { font-size: .65rem; }
-    .cal-cell-num { font-size: .8rem; padding: .2rem .35rem; min-width: 1.4rem; }
+    .cal-cell-head { margin-bottom: .3rem; gap: .25rem; }
+    .cal-cell-day-wrap { gap: .1rem; }
+    .cal-cell-day { font-size: .52rem; }
+    .cal-cell-num { font-size: 1rem; }
+    .cal-cell.is-today .cal-cell-num {
+        width: 1.6rem; height: 1.6rem; font-size: .9rem;
+        box-shadow: 0 0 0 2px rgba(44,82,130,.18), 0 2px 6px rgba(44,82,130,.3);
+    }
     .cal-cell-kg { display: none; }
-    .cal-cell-kgs { font-size: .6rem; gap: .1rem .35rem; padding-top: .25rem; }
-    .cal-cell-badge { font-size: .65rem; height: 1rem; min-width: 1rem; }
-    .cal-evt { padding: .2rem .35rem; font-size: .72rem; border-left-width: 2px; }
+    .cal-cell-kgs { font-size: .58rem; padding: .25rem .4rem; row-gap: .1rem; }
+    .cal-cell-badge { font-size: .6rem; height: 1rem; padding: 0 .35rem; }
+    .cal-evt { padding: .25rem .4rem; font-size: .72rem; border-left-width: 2px; }
     .cal-evt-kg { display: none; }
     .cal-evt-tag { font-size: .55rem; height: .9rem; padding: 0 .2rem; }
-    .cal-evt:hover { transform: none; }
+    .cal-evt:hover { transform: none; box-shadow: none; }
     .cal-grid-head > div { font-size: .7rem; padding: .4rem .15rem; }
     .cal-d-long { display: none; }
     .cal-d-short { display: inline; }
     .cal-cs-item { grid-template-columns: 1fr; gap: .15rem; }
     .cal-tooltip { max-width: 90vw; }
+    /* Microetiquetes ocultes a mòbil — el color del bloc ja és suficient */
+    .cal-rang-label { display: none; }
+    /* +N més encara visible però més compacte */
+    .cal-evt-more { font-size: .66rem; padding: .25rem .35rem; }
+    /* Modal de dia: amaga columna del transportista (estretor) */
+    .cal-day-item { grid-template-columns: 1fr auto; gap: .35rem; }
+    .cal-day-tra { display: none; }
     /* KPI cards: ajustar al mòbil */
     .cal-stats { gap: .35rem; width: 100%; justify-content: flex-start; }
     .cal-kpi-card { min-width: 4.5rem; padding: .3rem .5rem .35rem; }
     .cal-kpi-ico { font-size: 1rem; }
     .cal-kpi-val { font-size: 1rem; }
     .cal-kpi-lbl { font-size: .6rem; }
+    /* Botons setmana: a mòbil, encara més compactes */
+    .cal-nav .cal-nav-setm { min-width: 1.7rem; padding: .35rem .4rem; font-size: .85rem; }
 }

@@ -653,11 +653,11 @@
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
-    padding: 0 .35rem;
-    height: 1.05rem;
-    font-size: .62rem;
+    padding: 0 .3rem;
+    height: 1rem;
+    font-size: .52rem;
     font-weight: 700;
-    letter-spacing: .04em;
+    letter-spacing: .02em;
     background: #047857;
     color: #fff;
     border-radius: 3px;
@@ -968,7 +968,7 @@
     .cal-cell-badge { font-size: .65rem; height: 1rem; min-width: 1rem; }
     .cal-evt { padding: .2rem .35rem; font-size: .72rem; border-left-width: 2px; }
     .cal-evt-kg { display: none; }
-    .cal-evt-tag { font-size: .55rem; height: .9rem; padding: 0 .2rem; }
+    .cal-evt-tag { font-size: .46rem; height: .85rem; padding: 0 .18rem; }
     .cal-evt:hover { transform: none; }
     .cal-grid-head > div { font-size: .7rem; padding: .4rem .15rem; }
     .cal-d-long { display: none; }

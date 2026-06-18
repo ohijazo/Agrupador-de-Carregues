@@ -239,6 +239,19 @@ def llistar_carregues(
         ), 0)
     """
 
+    # Nombre de comandes (det_documento distints) dins la càrrega. Es fa servir
+    # al calendari per detectar càrregues "monocomanda" (signal de capacitat).
+    num_comandes_sql = """
+        ISNULL((
+            SELECT COUNT(DISTINCT d3.det_documento)
+            FROM   Detcargas d3 WITH (NOLOCK)
+            WHERE  d3.eje_ejercicio = c.eje_ejercicio
+              AND  d3.sca_serie     = c.sca_serie
+              AND  d3.car_numero    = c.car_numero
+              AND  d3.det_tipo      IN ('A','P')
+        ), 0)
+    """
+
     sql_items = """
         SELECT c.eje_ejercicio,
                RTRIM(c.sca_serie)   AS sca_serie,
@@ -256,7 +269,8 @@ def llistar_carregues(
                CAST(c.car_observaciones AS varchar(500)) AS car_observaciones,
                CAST(CASE WHEN """ + exists_palletizable_sql + """ THEN 1 ELSE 0 END AS BIT) AS palletitzable,
                CAST(CASE WHEN """ + exists_granel_sql + """ THEN 1 ELSE 0 END AS BIT) AS is_granel,
-               """ + kg_total_sql + """ AS kg_total
+               """ + kg_total_sql + """ AS kg_total,
+               """ + num_comandes_sql + """ AS num_comandes
         FROM   Cargas c WITH (NOLOCK)
         LEFT JOIN TRANS t WITH (NOLOCK) ON t.tra_codi = c.tra_codi
     """ + where_sql + """
@@ -292,6 +306,7 @@ def llistar_carregues(
             "palletitzable": bool(r.palletitzable),
             "is_granel": bool(r.is_granel),
             "kg_total": float(r.kg_total) if r.kg_total is not None else 0.0,
+            "num_comandes": int(r.num_comandes) if r.num_comandes is not None else 0,
         }
         for r in rows
     ]

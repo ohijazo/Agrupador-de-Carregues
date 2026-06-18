@@ -688,6 +688,55 @@
     color: #fff;
 }
 
+/* Bloc tra_codi 199 — només a rang=3 (no granel, no AGRI, no Mª Soledad).
+   To ambar suau per distingir-lo dels altres blocs sense xocar. */
+.cal-evt.is-tra-199[data-rang="3"]:not(.is-no-palletitzable):not([data-tipus="granel"]) {
+    background: #fff4d6;
+    color: #7a4f01;
+    border-left-color: #d97706;
+}
+.cal-evt.is-tra-199[data-rang="3"]:not(.is-no-palletitzable):not([data-tipus="granel"])::after {
+    background: #d97706;
+}
+.cal-evt.is-tra-199[data-rang="3"]:not(.is-no-palletitzable):not([data-tipus="granel"]):hover {
+    background: #d97706;
+    color: #fff;
+}
+
+/* Bloc tra_codi 201 / 194 — només a rang=3. To blau cel suau. */
+.cal-evt.is-tra-201-194[data-rang="3"]:not(.is-no-palletitzable):not([data-tipus="granel"]) {
+    background: #dbeafe;
+    color: #1e3a8a;
+    border-left-color: #2563eb;
+}
+.cal-evt.is-tra-201-194[data-rang="3"]:not(.is-no-palletitzable):not([data-tipus="granel"])::after {
+    background: #2563eb;
+}
+.cal-evt.is-tra-201-194[data-rang="3"]:not(.is-no-palletitzable):not([data-tipus="granel"]):hover {
+    background: #2563eb;
+    color: #fff;
+}
+
+/* ALERTA capacitat (1 comanda i > 17.000 kg): sobreescriu qualsevol fons
+   anterior. Es declara l'última perquè la cascada la faci guanyar i amb
+   selectors compostos perquè la seva especificitat empati o superi la dels
+   blocs per data-rang/data-tipus. */
+.cal-evt.is-alerta-pes-alt,
+.cal-evt.is-alerta-pes-alt[data-tipus="granel"],
+.cal-evt.is-alerta-pes-alt[data-rang="1"]:not([data-tipus="granel"]),
+.cal-evt.is-alerta-pes-alt[data-rang="2"]:not([data-tipus="granel"]),
+.cal-evt.is-alerta-pes-alt[data-rang="3"]:not([data-tipus="granel"]) {
+    background: #ffe1cc;
+    color: #7c2d12;
+    border-left: 4px solid #ea580c;
+    box-shadow: inset 0 0 0 1px #fb923c;
+}
+.cal-evt.is-alerta-pes-alt::after { background: #ea580c; }
+.cal-evt.is-alerta-pes-alt:hover {
+    background: #ea580c;
+    color: #fff;
+}
+
 /* --- Secció cap de setmana (sorra suau, integrat amb el sistema) ---- */
 .cal-capsetmana {
     margin-top: 1.5rem;

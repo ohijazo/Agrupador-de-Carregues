@@ -501,6 +501,16 @@
         li.dataset.tipus = c.is_granel ? "granel" : "saca";
         li.dataset.rang = String(rangSort(c));
         if (c.palletitzable === false) li.classList.add("is-no-palletitzable");
+        // Codis de transport amb identificació visual pròpia (només pinten quan
+        // no aplica un bloc superior — granel/AGRI/Mª Soledad — via CSS).
+        const traCodi = (c.tra_codi || "").trim();
+        if (traCodi === "199") li.classList.add("is-tra-199");
+        else if (traCodi === "201" || traCodi === "194") li.classList.add("is-tra-201-194");
+        // Alerta capacitat: 1 sola comanda i pes > 17.000 kg. Cada dia en poden
+        // entrar com a màxim 2 d'aquestes, per això es marquen molt visibles.
+        if ((Number(c.num_comandes) || 0) === 1 && kgDeCarrega(c) > 17000) {
+            li.classList.add("is-alerta-pes-alt");
+        }
         const traColor = colorPerTra(c.tra_codi);
         if (traColor) li.style.setProperty("--tra-color", traColor);
         // Guardem dades per al tooltip propi

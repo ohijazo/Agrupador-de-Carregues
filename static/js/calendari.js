@@ -463,7 +463,7 @@
                                 `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(val))} kg</span>` +
                             `</div>`;
                         const parts = [];
-                        if (kgGra > 0) parts.push(fila("is-gra", "🌾", "GRA", kgGra, `Granel: ${fmtKg2.format(kgGra)} kg`));
+                        if (kgGra > 0) parts.push(fila("is-gra", "🌾", "GRANEL", kgGra, `Granel: ${fmtKg2.format(kgGra)} kg`));
                         if (kgSacs > 0) parts.push(fila("is-sacs", "📦", "SACS", kgSacs, `Sacs: ${fmtKg2.format(kgSacs)} kg`));
                         if (kgGra > 0 && kgSacs > 0) {
                             parts.push(fila("is-total", "Σ", "TOTAL", kgTotal, `Total: ${fmtKg2.format(kgTotal)} kg`));

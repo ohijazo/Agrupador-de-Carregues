@@ -433,11 +433,11 @@
 /* Etiqueta del dia de la setmana — pes propi, però secundària respecte
    al número. */
 .cal-cell-day {
-    font-size: .82rem;
+    font-size: 1.2rem;       /* mateixa mida que .cal-cell-num */
     font-weight: 700;
     color: var(--gray-600);
     text-transform: uppercase;
-    letter-spacing: .06em;
+    letter-spacing: .04em;
     line-height: 1;
 }
 .cal-cell.is-today .cal-cell-day { color: var(--primary); }
@@ -984,7 +984,7 @@
         padding: .3rem .35rem;
         gap: .3rem;
     }
-    .cal-cell-day { font-size: .7rem; letter-spacing: .04em; }
+    .cal-cell-day { font-size: 1rem; letter-spacing: .03em; }
     .cal-cell-num { font-size: 1rem; padding: .15rem .3rem; }
     .cal-cell.is-today .cal-cell-num { min-width: 1.6rem; }
     .cal-cell-kg { display: none; }

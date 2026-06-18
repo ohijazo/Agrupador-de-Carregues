@@ -517,7 +517,7 @@
         if (c.is_granel) {
             const tag = document.createElement("span");
             tag.className = "cal-evt-tag";
-            tag.textContent = "GRA";
+            tag.textContent = "GRANEL";
             tag.title = "Càrrega a granel";
             li.appendChild(tag);
         }

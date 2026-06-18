@@ -23,6 +23,13 @@ function escapeM(s) {
     }[c]));
 }
 
+function fmtHoraCurta(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toLocaleTimeString("ca-ES", { hour: "2-digit", minute: "2-digit" });
+}
+
 function toast(type, msg) {
     const wrap = $m("#toasts");
     if (!wrap) return;
@@ -70,6 +77,9 @@ function _pintaLlistaItems(items) {
         const li = document.createElement("li");
         const pendents = (it.n_productes || 0) - (it.n_preparats || 0);
         const acabada = _isAcabada(it);
+        const creador = it.created_by_nom
+            ? `<span class="mag-llista-creador">· ${escapeM(it.created_by_nom)}</span>`
+            : "";
         li.innerHTML = `
             <a href="/magatzem/${encodeURIComponent(it.id)}" class="${acabada ? "is-acabada" : ""}">
                 <div class="nom">
@@ -77,7 +87,7 @@ function _pintaLlistaItems(items) {
                     ${acabada ? '<span class="badge-acabada">ACABADA</span>' : ""}
                 </div>
                 <div class="meta">
-                    ${escapeM(fmtData(it.ts))} · ${it.n_carregues} càrregues · ${it.n_productes} productes · ${fmtN.format(it.total_palets_fisics)} palets
+                    ${escapeM(fmtData(it.ts))} ${creador} · ${it.n_carregues} càrregues · ${it.n_productes} productes · ${fmtN.format(it.total_palets_fisics)} palets
                 </div>
                 <div class="meta progres">${it.n_preparats || 0} preparats / ${pendents} pendents</div>
             </a>`;
@@ -161,6 +171,8 @@ function calculaProgres() {
         $m("#mag-resum").textContent =
             `${resum.carregues?.length || 0} càrregues · ${fmtN.format(resum.total_sacs || 0)} sacs · ${fmtN.format(resum.total_palets_fisics || 0)} palets`;
     }
+    const creadorEl = $m("#mag-creador-nom");
+    if (creadorEl) creadorEl.textContent = magState.obj?.created_by_nom || "—";
     const btnDesfes = $m("#mag-desfes");
     if (btnDesfes) btnDesfes.hidden = prep === 0;
 }
@@ -213,6 +225,15 @@ function renderArticles() {
                     </span>`;
         }).join("");
 
+        let prepMetaHtml = "";
+        if (isPrep) {
+            const d = (magState.obj?.preparats_detall || {})[p.art_codi] || {};
+            const hora = fmtHoraCurta(d.ts);
+            const qui = d.per_nom || "";
+            const txt = [qui, hora].filter(Boolean).join(" · ");
+            if (txt) prepMetaHtml = `<div class="mag-prep-meta">✓ ${escapeM(txt)}</div>`;
+        }
+
         const li = document.createElement("li");
         li.className = "mag-card" + (isPrep ? " is-preparat" : "");
         li.dataset.artCodi = p.art_codi;
@@ -225,6 +246,7 @@ function renderArticles() {
                 </div>
                 <div class="mag-art-totals-sec">${fmtKgN.format(p.total_kg)} kg</div>
                 <div class="mag-art-carregues">${carregesHtml}</div>
+                ${prepMetaHtml}
             </div>
             <button type="button" class="mag-prep-check ${isPrep ? "is-on" : ""}"
                     data-act="toggle"

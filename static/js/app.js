@@ -1871,10 +1871,13 @@ async function obrirDesades() {
             buit.hidden = true;
             for (const it of items) {
                 const li = document.createElement("li");
+                const creador = it.created_by_nom
+                    ? ` · <span class="desades-creador">creada per ${escapeHtml(it.created_by_nom)}</span>`
+                    : "";
                 li.innerHTML = `
                     <div class="desades-item-info">
                         <strong>${escapeHtml(it.nom)}</strong>
-                        <div class="meta">${escapeHtml(fmtData(it.ts))} · ${it.n_carregues} càrregues · ${it.n_productes} productes · ${fmt.format(it.total_palets_fisics)} palets</div>
+                        <div class="meta">${escapeHtml(fmtData(it.ts))}${creador} · ${it.n_carregues} càrregues · ${it.n_productes} productes · ${fmt.format(it.total_palets_fisics)} palets</div>
                     </div>
                     <div class="desades-item-actions">
                         <button type="button" class="btn btn-primary btn-sm" data-act="carregar" data-id="${escapeHtml(it.id)}">Carrega</button>

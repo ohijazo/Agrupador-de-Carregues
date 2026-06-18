@@ -484,6 +484,7 @@ def calendari():
 
 
 @app.route("/magatzem", strict_slashes=False)
+@auth.requires_rol("admin", "oficina", "magatzem")
 def magatzem_llista():
     return render_template("magatzem_llista.html")
 
@@ -493,7 +494,14 @@ def ajuda():
     return render_template("ajuda.html")
 
 
+@app.route("/control", strict_slashes=False)
+@auth.requires_rol("admin", "oficina")
+def control_llista():
+    return render_template("control.html")
+
+
 @app.route("/magatzem/<id_>")
+@auth.requires_rol("admin", "oficina", "magatzem")
 def magatzem_prep(id_):
     obj = agrupacions_store.obtenir(id_)
     if not obj:
@@ -604,11 +612,22 @@ def api_articles():
 
 
 @app.route("/api/agrupacions", methods=["GET"])
+@auth.requires_rol("admin", "oficina", "magatzem")
 def api_agrupacions_llista():
     try:
         return jsonify(agrupacions_store.llistar())
     except Exception:
         log.exception("agrupacions llistar")
+        return _err_genèric()
+
+
+@app.route("/api/control/agrupacions", methods=["GET"])
+@auth.requires_rol("admin", "oficina")
+def api_control_agrupacions():
+    try:
+        return jsonify(agrupacions_store.llistar_control())
+    except Exception:
+        log.exception("control llistar")
         return _err_genèric()
 
 
@@ -629,7 +648,11 @@ def api_agrupacions_guardar():
         return _err_validacio("'resultat' és obligatori.")
     plantilla = bool(body.get("plantilla"))
     try:
-        info = agrupacions_store.guardar(nom, carregues, resultat, plantilla=plantilla)
+        info = agrupacions_store.guardar(
+            nom, carregues, resultat,
+            plantilla=plantilla,
+            created_by_id=session.get("user_id"),
+        )
         log.info(
             "audit guardar agrupacio=%s nom=%s ip=%s n_carregues=%d plantilla=%s",
             info.get("id"), info.get("nom"), request.remote_addr, info.get("n_carregues", 0), plantilla,
@@ -651,6 +674,7 @@ def api_plantilles_llista():
 
 
 @app.route("/api/agrupacions/<id_>", methods=["GET"])
+@auth.requires_rol("admin", "oficina", "magatzem")
 def api_agrupacions_obtenir(id_):
     obj = agrupacions_store.obtenir(id_)
     if not obj:
@@ -676,13 +700,18 @@ def api_agrupacions_version():
 
 
 @app.route("/api/agrupacions/<id_>/producte", methods=["PATCH"])
+@auth.requires_rol("admin", "oficina", "magatzem")
 def api_agrupacions_producte(id_):
     body = request.get_json(silent=True) or {}
     art_codi, err = valida_codi(body.get("art_codi"), "art_codi", max_len=20)
     if err:
         return _err_validacio(err)
     preparat = bool(body.get("preparat"))
-    obj = agrupacions_store.marca_producte(id_, art_codi, preparat, ip=request.remote_addr)
+    obj = agrupacions_store.marca_producte(
+        id_, art_codi, preparat,
+        ip=request.remote_addr,
+        marcat_per_id=session.get("user_id"),
+    )
     if obj is None:
         return jsonify({"error": "Agrupació no trobada."}), 404
     log.info(
@@ -693,6 +722,7 @@ def api_agrupacions_producte(id_):
 
 
 @app.route("/api/agrupacions/<id_>/reset-preparats", methods=["POST"])
+@auth.requires_rol("admin", "oficina", "magatzem")
 def api_agrupacions_reset_preparats(id_):
     obj = agrupacions_store.reset_preparats(id_, ip=request.remote_addr)
     if obj is None:

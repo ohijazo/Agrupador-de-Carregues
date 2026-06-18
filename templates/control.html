@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control d'agrupacions</title>
+    <link rel="icon" type="image/svg+xml" href="{{ static_url('favicon.svg') }}">
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/magatzem.css') }}">
+</head>
+<body class="mag-body">
+
+<header class="mag-header">
+    <div class="container mag-header-row">
+        <div>
+            <a href="/" class="mag-back">← Inici</a>
+            <h1>📊 Control d'agrupacions</h1>
+            <p class="mag-subtitle">Estat i traçabilitat de la preparació</p>
+        </div>
+        <div class="mag-header-tools">
+            {% include '_user_menu.html' %}
+        </div>
+    </div>
+</header>
+
+<main class="container">
+    <div class="control-bar">
+        <label>
+            <span>Estat:</span>
+            <select id="ctrl-estat">
+                <option value="">Tots</option>
+                <option value="pendent">Pendent</option>
+                <option value="en_curs">En curs</option>
+                <option value="acabada">Acabada</option>
+            </select>
+        </label>
+        <label class="mag-toggle">
+            <input type="checkbox" id="ctrl-nomes-avui">
+            <span>Només d'avui</span>
+        </label>
+        <div class="control-bar-spacer"></div>
+        <span id="ctrl-count" class="control-count">—</span>
+    </div>
+
+    <div class="control-table-wrap">
+        <table class="control-table">
+            <thead>
+                <tr>
+                    <th>Nom</th>
+                    <th>Creada</th>
+                    <th>Creador</th>
+                    <th class="num">Productes</th>
+                    <th>Estat</th>
+                    <th>Inici</th>
+                    <th>Fi</th>
+                    <th>Durada</th>
+                    <th>Preparador</th>
+                </tr>
+            </thead>
+            <tbody id="ctrl-tbody"></tbody>
+        </table>
+        <p id="ctrl-buit" class="mag-empty" hidden>Cap agrupació coincideix amb el filtre.</p>
+    </div>
+</main>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="{{ static_url('js/fmt.js') }}"></script>
+<script src="{{ static_url('js/control.js') }}"></script>
+<script src="{{ static_url('js/user-menu.js') }}"></script>
+</body>
+</html>

@@ -20,11 +20,17 @@ CREATE TABLE IF NOT EXISTS agrupacions (
     -- Cossos grans com a JSONB (input + resultat motor)
     carregues             JSONB        NOT NULL,
     resultat              JSONB        NOT NULL,
-    plantilla_meta        JSONB        -- només si plantilla = TRUE
+    plantilla_meta        JSONB,       -- només si plantilla = TRUE
+    -- Traçabilitat: usuari (oficina/admin) que ha desat l'agrupació.
+    -- FK declarat com ALTER més avall perquè la taula `usuaris` es defineix
+    -- més endavant en aquest fitxer. NULL si la fila és anterior a l'auth
+    -- o si l'usuari s'ha eliminat.
+    created_by_id         INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_agrupacions_ts          ON agrupacions (ts DESC);
 CREATE INDEX IF NOT EXISTS idx_agrupacions_plantilla   ON agrupacions (plantilla) WHERE plantilla = TRUE;
+CREATE INDEX IF NOT EXISTS idx_agrupacions_created_by  ON agrupacions (created_by_id) WHERE created_by_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- Productes preparats per agrupació (estat operari magatzem)
@@ -34,10 +40,14 @@ CREATE TABLE IF NOT EXISTS productes_preparats (
     art_codi              TEXT         NOT NULL,
     marcat_ts             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     marcat_ip             TEXT,
+    -- Traçabilitat: usuari que ha marcat el producte. FK declarat com ALTER
+    -- més avall (vegeu el comentari a `agrupacions.created_by_id`).
+    marcat_per_id         INTEGER,
     PRIMARY KEY (agrupacio_id, art_codi)
 );
 
-CREATE INDEX IF NOT EXISTS idx_productes_preparats_agrupacio ON productes_preparats (agrupacio_id);
+CREATE INDEX IF NOT EXISTS idx_productes_preparats_agrupacio  ON productes_preparats (agrupacio_id);
+CREATE INDEX IF NOT EXISTS idx_productes_preparats_marcat_per ON productes_preparats (marcat_per_id) WHERE marcat_per_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- Índex desnormalitzat: quines càrregues són en quina agrupació
@@ -83,6 +93,24 @@ CREATE TABLE IF NOT EXISTS usuaris (
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     last_login_at TIMESTAMPTZ
 );
+
+-- FK de traçabilitat: declarats com ALTER TABLE perquè `agrupacions` i
+-- `productes_preparats` es defineixen abans que `usuaris`. Embolcallats en
+-- DO blocks per ser idempotents (PG12 no té ADD CONSTRAINT IF NOT EXISTS).
+DO $$ BEGIN
+    ALTER TABLE agrupacions
+        ADD CONSTRAINT fk_agrupacions_created_by
+        FOREIGN KEY (created_by_id) REFERENCES usuaris(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    ALTER TABLE productes_preparats
+        ADD CONSTRAINT fk_productes_preparats_marcat_per
+        FOREIGN KEY (marcat_per_id) REFERENCES usuaris(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE INDEX IF NOT EXISTS idx_productes_preparats_marcat_per
+    ON productes_preparats (marcat_per_id) WHERE marcat_per_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- Audit log: registre d'accions importants (escriptures) per a traçabilitat.

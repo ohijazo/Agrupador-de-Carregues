@@ -587,3 +587,129 @@
         print-color-adjust: exact !important;
     }
 }
+
+/* ===== Traçabilitat d'usuari ============================================ */
+
+/* Capçalera de magatzem_prep — línia "Creada per X" */
+.mag-creador {
+    margin: 2px 0 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted, #6b7280);
+}
+.mag-creador #mag-creador-nom {
+    font-weight: 600;
+    color: var(--text-secondary, #374151);
+}
+
+/* Card de producte preparat — "✓ Operari · 14:32" sota les càrregues */
+.mag-prep-meta {
+    margin-top: 6px;
+    font-size: 0.82rem;
+    color: var(--text-muted, #6b7280);
+    font-weight: 500;
+}
+
+/* Llistat de magatzem — creador inline al meta */
+.mag-llista-creador {
+    color: var(--text-secondary, #374151);
+    font-weight: 500;
+}
+
+/* Dialog desades (oficina) — creador inline al meta */
+.desades-creador {
+    color: var(--text-secondary, #374151);
+}
+
+@media print {
+    .mag-creador,
+    .mag-prep-meta { color: #444 !important; }
+}
+
+/* ===== Pantalla /control ================================================ */
+
+.control-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 12px 0 16px 0;
+    padding: 10px 12px;
+    background: var(--bg-elev, #f8fafc);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px;
+}
+.control-bar label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: var(--text-secondary, #374151);
+}
+.control-bar select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 6px;
+    background: white;
+    font-size: 0.9rem;
+}
+.control-bar-spacer { flex: 1; }
+.control-count {
+    font-size: 0.85rem;
+    color: var(--text-muted, #6b7280);
+    font-variant-numeric: tabular-nums;
+}
+
+.control-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px;
+    background: white;
+}
+.control-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+.control-table th,
+.control-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color, #f1f5f9);
+    white-space: nowrap;
+}
+.control-table th {
+    background: var(--bg-elev, #f8fafc);
+    font-weight: 600;
+    color: var(--text-secondary, #374151);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.control-table td.num,
+.control-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.control-table tbody tr:hover { background: var(--bg-hover, #f9fafb); }
+
+.ctrl-nom {
+    color: var(--accent, #2563eb);
+    text-decoration: none;
+    font-weight: 500;
+}
+.ctrl-nom:hover { text-decoration: underline; }
+
+.ctrl-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.ctrl-badge-pendent { background: #fef3c7; color: #92400e; }
+.ctrl-badge-en-curs { background: #dbeafe; color: #1e40af; }
+.ctrl-badge-acabada { background: #d1fae5; color: #065f46; }
+
+@media (max-width: 720px) {
+    .control-table { font-size: 0.85rem; }
+    .control-table th,
+    .control-table td { padding: 8px 6px; }
+}

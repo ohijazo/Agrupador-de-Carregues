@@ -83,7 +83,8 @@ def _valida_id(id_: str) -> str:
 # ---------------------------------------------------------------------------
 # CRUD bàsic
 # ---------------------------------------------------------------------------
-def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = False) -> dict:
+def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = False,
+            created_by_id: int | None = None) -> dict:
     id_ = uuid.uuid4().hex
     nom = (nom or "").strip() or f"Agrupació {datetime.now().isoformat(timespec='seconds')}"
     nom = nom[:80]
@@ -100,8 +101,8 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
                 INSERT INTO agrupacions
                     (id, nom, plantilla, n_carregues, n_productes,
                      total_palets_fisics, total_sacs,
-                     carregues, resultat, plantilla_meta)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     carregues, resultat, plantilla_meta, created_by_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING ts
                 """,
                 (
@@ -109,6 +110,7 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
                     total_palets_fisics, total_sacs,
                     json.dumps(carregues), json.dumps(resultat),
                     json.dumps(plantilla_meta) if plantilla_meta else None,
+                    created_by_id,
                 ),
             )
             ts_row = cur.fetchone()
@@ -146,12 +148,14 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
 
 def llistar() -> list[dict]:
     sql = """
-        SELECT id, nom, ts, n_carregues, n_productes,
-               total_palets_fisics, total_sacs,
+        SELECT a.id, a.nom, a.ts, a.n_carregues, a.n_productes,
+               a.total_palets_fisics, a.total_sacs,
                (SELECT COUNT(*) FROM productes_preparats p
-                WHERE p.agrupacio_id = a.id) AS n_preparats
+                WHERE p.agrupacio_id = a.id) AS n_preparats,
+               a.created_by_id, u.nom AS created_by_nom
         FROM agrupacions a
-        ORDER BY ts DESC
+        LEFT JOIN usuaris u ON u.id = a.created_by_id
+        ORDER BY a.ts DESC
     """
     out = []
     for r in db.fetch_all(sql):
@@ -164,6 +168,71 @@ def llistar() -> list[dict]:
             "total_palets_fisics": r["total_palets_fisics"],
             "total_sacs": r["total_sacs"],
             "n_preparats": int(r["n_preparats"] or 0),
+            "created_by_id": r["created_by_id"],
+            "created_by_nom": r["created_by_nom"],
+        })
+    return out
+
+
+def llistar_control() -> list[dict]:
+    """Llistat per a la pantalla /control: agrega inici/fi/durada/preparador.
+
+    Tot derivat de productes_preparats (no cal columnes noves a agrupacions):
+      - prep_iniciat: MIN(marcat_ts)
+      - prep_finalitzat: MAX(marcat_ts), només si totes les marques completes
+      - prep_per_nom: usuari amb el MIN(marcat_ts) (el "preparador" principal)
+    """
+    sql = """
+        SELECT a.id, a.nom, a.ts, a.n_carregues, a.n_productes,
+               COALESCE(agg.n_preparats, 0) AS n_preparats,
+               uc.nom AS created_by_nom,
+               agg.prep_iniciat, agg.prep_ultim_ts,
+               up.nom AS prep_per_nom
+        FROM agrupacions a
+        LEFT JOIN usuaris uc ON uc.id = a.created_by_id
+        LEFT JOIN LATERAL (
+            SELECT COUNT(*)::INTEGER AS n_preparats,
+                   MIN(p.marcat_ts) AS prep_iniciat,
+                   MAX(p.marcat_ts) AS prep_ultim_ts,
+                   (SELECT marcat_per_id FROM productes_preparats
+                    WHERE agrupacio_id = a.id
+                    ORDER BY marcat_ts ASC LIMIT 1) AS prep_per_id
+            FROM productes_preparats p
+            WHERE p.agrupacio_id = a.id
+        ) agg ON TRUE
+        LEFT JOIN usuaris up ON up.id = agg.prep_per_id
+        WHERE a.plantilla = FALSE
+        ORDER BY a.ts DESC
+    """
+    out = []
+    for r in db.fetch_all(sql):
+        n_prod = int(r["n_productes"] or 0)
+        n_prep = int(r["n_preparats"] or 0)
+        finalitzada = n_prod > 0 and n_prep >= n_prod
+        prep_iniciat = r["prep_iniciat"]
+        prep_finalitzat = r["prep_ultim_ts"] if finalitzada else None
+        durada_s = None
+        if prep_iniciat and prep_finalitzat:
+            durada_s = int((prep_finalitzat - prep_iniciat).total_seconds())
+        if finalitzada:
+            estat = "acabada"
+        elif n_prep > 0:
+            estat = "en_curs"
+        else:
+            estat = "pendent"
+        out.append({
+            "id": _id_to_hex(r["id"]),
+            "nom": r["nom"],
+            "ts": _format_ts(r["ts"]),
+            "n_carregues": r["n_carregues"],
+            "n_productes": n_prod,
+            "n_preparats": n_prep,
+            "created_by_nom": r["created_by_nom"],
+            "prep_iniciat": _format_ts(prep_iniciat) if prep_iniciat else None,
+            "prep_finalitzat": _format_ts(prep_finalitzat) if prep_finalitzat else None,
+            "prep_per_nom": r["prep_per_nom"],
+            "durada_s": durada_s,
+            "estat": estat,
         })
     return out
 
@@ -174,16 +243,36 @@ def obtenir(id_: str) -> dict | None:
     except ValueError:
         return None
     sql = """
-        SELECT id, nom, ts, plantilla, carregues, resultat, plantilla_meta,
-               (SELECT array_agg(art_codi ORDER BY art_codi)
+        SELECT a.id, a.nom, a.ts, a.plantilla, a.carregues, a.resultat,
+               a.plantilla_meta,
+               a.created_by_id, u.nom AS created_by_nom,
+               (SELECT array_agg(p.art_codi ORDER BY p.art_codi)
                 FROM productes_preparats p
                 WHERE p.agrupacio_id = a.id) AS productes_preparats
         FROM agrupacions a
-        WHERE id = %s
+        LEFT JOIN usuaris u ON u.id = a.created_by_id
+        WHERE a.id = %s
     """
     r = db.fetch_one(sql, (id_,))
     if not r:
         return None
+    detall_rows = db.fetch_all(
+        """
+        SELECT p.art_codi, p.marcat_ts, p.marcat_per_id, up.nom AS marcat_per_nom
+        FROM productes_preparats p
+        LEFT JOIN usuaris up ON up.id = p.marcat_per_id
+        WHERE p.agrupacio_id = %s
+        """,
+        (id_,),
+    )
+    preparats_detall = {
+        row["art_codi"]: {
+            "ts": _format_ts(row["marcat_ts"]),
+            "per_id": row["marcat_per_id"],
+            "per_nom": row["marcat_per_nom"],
+        }
+        for row in detall_rows
+    }
     return {
         "id": _id_to_hex(r["id"]),
         "nom": r["nom"],
@@ -193,6 +282,9 @@ def obtenir(id_: str) -> dict | None:
         "resultat": r["resultat"] or {},
         "plantilla_meta": r["plantilla_meta"],
         "productes_preparats": list(r["productes_preparats"] or []),
+        "preparats_detall": preparats_detall,
+        "created_by_id": r["created_by_id"],
+        "created_by_nom": r["created_by_nom"],
     }
 
 
@@ -214,7 +306,8 @@ def eliminar(id_: str) -> bool:
 # ---------------------------------------------------------------------------
 # Productes preparats (magatzem)
 # ---------------------------------------------------------------------------
-def marca_producte(id_: str, art_codi: str, preparat: bool, ip: str | None = None) -> dict | None:
+def marca_producte(id_: str, art_codi: str, preparat: bool, ip: str | None = None,
+                   marcat_per_id: int | None = None) -> dict | None:
     try:
         _valida_id(id_)
     except ValueError:
@@ -228,11 +321,11 @@ def marca_producte(id_: str, art_codi: str, preparat: bool, ip: str | None = Non
             if preparat:
                 cur.execute(
                     """
-                    INSERT INTO productes_preparats (agrupacio_id, art_codi, marcat_ip)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO productes_preparats (agrupacio_id, art_codi, marcat_ip, marcat_per_id)
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (agrupacio_id, art_codi) DO NOTHING
                     """,
-                    (id_, art_codi, ip),
+                    (id_, art_codi, ip, marcat_per_id),
                 )
             else:
                 cur.execute(

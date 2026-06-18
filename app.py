@@ -731,6 +731,30 @@ def api_agrupacions_reset_preparats(id_):
     return jsonify({"ok": True, "n_preparats": 0})
 
 
+@app.route("/api/agrupacions/<id_>/finalitzar", methods=["POST"])
+@auth.requires_rol("admin", "oficina")
+def api_agrupacions_finalitzar(id_):
+    obj = agrupacions_store.marcar_finalitzada(
+        id_, user_id=session.get("user_id"), ip=request.remote_addr,
+    )
+    if obj is None:
+        return jsonify({"error": "Agrupació no trobada."}), 404
+    log.info("audit finalitzar manual agrupacio=%s ip=%s", id_, request.remote_addr)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agrupacions/<id_>/reobrir", methods=["POST"])
+@auth.requires_rol("admin", "oficina")
+def api_agrupacions_reobrir(id_):
+    obj = agrupacions_store.reobrir(
+        id_, user_id=session.get("user_id"), ip=request.remote_addr,
+    )
+    if obj is None:
+        return jsonify({"error": "Agrupació no trobada."}), 404
+    log.info("audit reobrir agrupacio=%s ip=%s", id_, request.remote_addr)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/carrega-detall")
 def api_carrega_detall():
     eje, err = valida_codi(request.args.get("eje"), "eje", max_len=4)

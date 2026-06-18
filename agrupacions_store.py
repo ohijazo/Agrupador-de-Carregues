@@ -177,19 +177,25 @@ def llistar() -> list[dict]:
 def llistar_control() -> list[dict]:
     """Llistat per a la pantalla /control: agrega inici/fi/durada/preparador.
 
-    Tot derivat de productes_preparats (no cal columnes noves a agrupacions):
-      - prep_iniciat: MIN(marcat_ts)
-      - prep_finalitzat: MAX(marcat_ts), només si totes les marques completes
-      - prep_per_nom: usuari amb el MIN(marcat_ts) (el "preparador" principal)
+    Estats possibles:
+      - "pendent": cap producte marcat.
+      - "en_curs": algun producte marcat però no tots.
+      - "acabada": tots els productes marcats (finalització natural).
+      - "tancada": tancada manualment per oficina/admin (preval sobre la resta).
+
+    Quan és "tancada", fi = finalitzada_manual_at i durada compta des de l'inici
+    real del checklist (o és NULL si encara no s'havia començat).
     """
     sql = """
         SELECT a.id, a.nom, a.ts, a.n_carregues, a.n_productes,
+               a.finalitzada_manual_at, ufm.nom AS finalitzada_manual_per_nom,
                COALESCE(agg.n_preparats, 0) AS n_preparats,
                uc.nom AS created_by_nom,
                agg.prep_iniciat, agg.prep_ultim_ts,
                up.nom AS prep_per_nom
         FROM agrupacions a
-        LEFT JOIN usuaris uc ON uc.id = a.created_by_id
+        LEFT JOIN usuaris uc  ON uc.id  = a.created_by_id
+        LEFT JOIN usuaris ufm ON ufm.id = a.finalitzada_manual_per_id
         LEFT JOIN LATERAL (
             SELECT COUNT(*)::INTEGER AS n_preparats,
                    MIN(p.marcat_ts) AS prep_iniciat,
@@ -208,18 +214,27 @@ def llistar_control() -> list[dict]:
     for r in db.fetch_all(sql):
         n_prod = int(r["n_productes"] or 0)
         n_prep = int(r["n_preparats"] or 0)
-        finalitzada = n_prod > 0 and n_prep >= n_prod
         prep_iniciat = r["prep_iniciat"]
-        prep_finalitzat = r["prep_ultim_ts"] if finalitzada else None
+        fin_manual_at = r["finalitzada_manual_at"]
+        completa = n_prod > 0 and n_prep >= n_prod
+
+        if fin_manual_at is not None:
+            estat = "tancada"
+            prep_finalitzat = fin_manual_at
+        elif completa:
+            estat = "acabada"
+            prep_finalitzat = r["prep_ultim_ts"]
+        elif n_prep > 0:
+            estat = "en_curs"
+            prep_finalitzat = None
+        else:
+            estat = "pendent"
+            prep_finalitzat = None
+
         durada_s = None
         if prep_iniciat and prep_finalitzat:
             durada_s = int((prep_finalitzat - prep_iniciat).total_seconds())
-        if finalitzada:
-            estat = "acabada"
-        elif n_prep > 0:
-            estat = "en_curs"
-        else:
-            estat = "pendent"
+
         out.append({
             "id": _id_to_hex(r["id"]),
             "nom": r["nom"],
@@ -233,6 +248,8 @@ def llistar_control() -> list[dict]:
             "prep_per_nom": r["prep_per_nom"],
             "durada_s": durada_s,
             "estat": estat,
+            "finalitzada_manual_at": _format_ts(fin_manual_at) if fin_manual_at else None,
+            "finalitzada_manual_per_nom": r["finalitzada_manual_per_nom"],
         })
     return out
 
@@ -354,6 +371,61 @@ def reset_preparats(id_: str, ip: str | None = None) -> dict | None:
             cur.execute("DELETE FROM productes_preparats WHERE agrupacio_id = %s", (id_,))
             _bump_version(cur)
     audit.log("preparats_reset", target=id_)
+    return obtenir(id_)
+
+
+def reobrir(id_: str, user_id: int | None = None,
+            ip: str | None = None) -> dict | None:
+    """Reverteix una finalització manual: torna l'agrupació al seu estat natural."""
+    try:
+        _valida_id(id_)
+    except ValueError:
+        return None
+    with db.get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE agrupacions
+                SET finalitzada_manual_at = NULL,
+                    finalitzada_manual_per_id = NULL
+                WHERE id = %s
+                """,
+                (id_,),
+            )
+            if cur.rowcount == 0:
+                return None
+            _bump_version(cur)
+    audit.log("agrupacio_reoberta", target=id_)
+    return obtenir(id_)
+
+
+def marcar_finalitzada(id_: str, user_id: int | None = None,
+                       ip: str | None = None) -> dict | None:
+    """Tanca manualment l'agrupació (estat "Tancada") sense tocar productes_preparats.
+
+    Idempotent: si ja estava tancada manualment, no es sobreescriu el qui/quan.
+    """
+    try:
+        _valida_id(id_)
+    except ValueError:
+        return None
+    with db.get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE agrupacions
+                SET finalitzada_manual_at = NOW(),
+                    finalitzada_manual_per_id = %s
+                WHERE id = %s AND finalitzada_manual_at IS NULL
+                """,
+                (user_id, id_),
+            )
+            if cur.rowcount == 0:
+                cur.execute("SELECT 1 FROM agrupacions WHERE id = %s", (id_,))
+                if not cur.fetchone():
+                    return None
+            _bump_version(cur)
+    audit.log("agrupacio_finalitzada_manual", target=id_)
     return obtenir(id_)
 
 

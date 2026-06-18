@@ -707,6 +707,41 @@
 .ctrl-badge-pendent { background: #fef3c7; color: #92400e; }
 .ctrl-badge-en-curs { background: #dbeafe; color: #1e40af; }
 .ctrl-badge-acabada { background: #d1fae5; color: #065f46; }
+.ctrl-badge-tancada { background: #fed7aa; color: #9a3412; cursor: help; }
+
+.ctrl-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+.ctrl-btn {
+    padding: 4px 10px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+    white-space: nowrap;
+}
+.ctrl-btn-fin {
+    background: #eff6ff;
+    color: #1e40af;
+    border-color: #bfdbfe;
+}
+.ctrl-btn-fin:hover { background: #dbeafe; }
+.ctrl-btn-reo {
+    background: #f5f3ff;
+    color: #5b21b6;
+    border-color: #ddd6fe;
+}
+.ctrl-btn-reo:hover { background: #ede9fe; }
+.ctrl-btn-del {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+.ctrl-btn-del:hover { background: #fee2e2; }
 
 @media (max-width: 720px) {
     .control-table { font-size: 0.85rem; }

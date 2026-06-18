@@ -15,6 +15,18 @@
         }[c]));
     }
 
+    function getCsrfTok() {
+        const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+        return m ? decodeURIComponent(m[1]) : "";
+    }
+
+    function csrfHeaders(extra = {}) {
+        const tok = getCsrfTok();
+        const h = new Headers(extra);
+        if (tok) h.set("X-CSRF-Token", tok);
+        return h;
+    }
+
     function fmtHoraCurta(iso) {
         if (!iso) return "—";
         const d = new Date(iso);
@@ -32,14 +44,22 @@
         return mr ? `${h}h ${mr}min` : `${h}h`;
     }
 
-    function badgeEstat(estat) {
-        const map = {
-            pendent: { txt: "Pendent", cls: "ctrl-badge-pendent" },
-            en_curs: { txt: "En curs", cls: "ctrl-badge-en-curs" },
-            acabada: { txt: "Acabada", cls: "ctrl-badge-acabada" },
-        };
-        const m = map[estat] || { txt: estat, cls: "" };
-        return `<span class="ctrl-badge ${m.cls}">${escapeM(m.txt)}</span>`;
+    const ESTAT_MAP = {
+        pendent: { txt: "Pendent", cls: "ctrl-badge-pendent" },
+        en_curs: { txt: "En curs", cls: "ctrl-badge-en-curs" },
+        acabada: { txt: "Acabada", cls: "ctrl-badge-acabada" },
+        tancada: { txt: "Tancada", cls: "ctrl-badge-tancada" },
+    };
+
+    function badgeEstat(it) {
+        const m = ESTAT_MAP[it.estat] || { txt: it.estat, cls: "" };
+        let title = "";
+        if (it.estat === "tancada") {
+            const qui = it.finalitzada_manual_per_nom || "—";
+            const hora = fmtHoraCurta(it.finalitzada_manual_at);
+            title = ` title="Tancada per ${escapeM(qui)} · ${escapeM(hora)}"`;
+        }
+        return `<span class="ctrl-badge ${m.cls}"${title}>${escapeM(m.txt)}</span>`;
     }
 
     function avuiISO() {
@@ -61,6 +81,18 @@
         });
     }
 
+    function accionsCell(it) {
+        const idEsc = escapeM(it.id);
+        let principal = "";
+        if (it.estat === "tancada") {
+            principal = `<button type="button" class="ctrl-btn ctrl-btn-reo" data-act="reobrir" data-id="${idEsc}">Reobrir</button>`;
+        } else if (it.estat !== "acabada") {
+            principal = `<button type="button" class="ctrl-btn ctrl-btn-fin" data-act="finalitzar" data-id="${idEsc}">Finalitza</button>`;
+        }
+        const btnDel = `<button type="button" class="ctrl-btn ctrl-btn-del" data-act="eliminar" data-id="${idEsc}">Elimina</button>`;
+        return `<div class="ctrl-actions">${principal}${btnDel}</div>`;
+    }
+
     function pinta() {
         const tbody = $("#ctrl-tbody");
         const buit = $("#ctrl-buit");
@@ -80,13 +112,65 @@
                 <td>${escapeM(fmtData(it.ts))}</td>
                 <td>${escapeM(it.created_by_nom || "—")}</td>
                 <td class="num">${escapeM(progres)}</td>
-                <td>${badgeEstat(it.estat)}</td>
+                <td>${badgeEstat(it)}</td>
                 <td>${escapeM(fmtHoraCurta(it.prep_iniciat))}</td>
                 <td>${escapeM(fmtHoraCurta(it.prep_finalitzat))}</td>
                 <td>${escapeM(fmtDurada(it.durada_s))}</td>
                 <td>${escapeM(it.prep_per_nom || "—")}</td>
+                <td>${accionsCell(it)}</td>
             </tr>`;
         }).join("");
+    }
+
+    async function finalitzar(id) {
+        try {
+            const r = await fetch(`/api/agrupacions/${encodeURIComponent(id)}/finalitzar`,
+                { method: "POST", credentials: "same-origin", headers: csrfHeaders() });
+            if (!r.ok) {
+                console.warn("finalitzar HTTP", r.status);
+                return;
+            }
+            await carregar();
+        } catch (e) {
+            console.warn("finalitzar error", e);
+        }
+    }
+
+    async function reobrir(id) {
+        try {
+            const r = await fetch(`/api/agrupacions/${encodeURIComponent(id)}/reobrir`,
+                { method: "POST", credentials: "same-origin", headers: csrfHeaders() });
+            if (!r.ok) {
+                console.warn("reobrir HTTP", r.status);
+                return;
+            }
+            await carregar();
+        } catch (e) {
+            console.warn("reobrir error", e);
+        }
+    }
+
+    async function eliminar(id) {
+        const confirma = window.mostrarConfirmacio || (() => Promise.resolve(window.confirm("Eliminar definitivament?")));
+        const ok = await confirma({
+            titol: "Eliminar agrupació",
+            missatge: "L'agrupació quedarà eliminada definitivament. Aquesta acció no es pot desfer.",
+            btnOk: "Sí, elimina-la",
+            btnCancel: "No",
+            tipus: "danger",
+        });
+        if (!ok) return;
+        try {
+            const r = await fetch(`/api/agrupacions/${encodeURIComponent(id)}`,
+                { method: "DELETE", credentials: "same-origin", headers: csrfHeaders() });
+            if (!r.ok) {
+                console.warn("eliminar HTTP", r.status);
+                return;
+            }
+            await carregar();
+        } catch (e) {
+            console.warn("eliminar error", e);
+        }
     }
 
     async function carregar() {
@@ -111,6 +195,15 @@
     document.addEventListener("DOMContentLoaded", () => {
         $("#ctrl-estat").addEventListener("change", pinta);
         $("#ctrl-nomes-avui").addEventListener("change", pinta);
+        $("#ctrl-tbody").addEventListener("click", (ev) => {
+            const btn = ev.target.closest("button[data-act]");
+            if (!btn) return;
+            const id = btn.dataset.id;
+            if (!id) return;
+            if (btn.dataset.act === "finalitzar") finalitzar(id);
+            else if (btn.dataset.act === "reobrir") reobrir(id);
+            else if (btn.dataset.act === "eliminar") eliminar(id);
+        });
         carregar();
         startPolling();
     });

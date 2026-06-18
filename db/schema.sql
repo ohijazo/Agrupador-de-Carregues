@@ -25,12 +25,18 @@ CREATE TABLE IF NOT EXISTS agrupacions (
     -- FK declarat com ALTER més avall perquè la taula `usuaris` es defineix
     -- més endavant en aquest fitxer. NULL si la fila és anterior a l'auth
     -- o si l'usuari s'ha eliminat.
-    created_by_id         INTEGER
+    created_by_id         INTEGER,
+    -- Finalització manual: si l'oficina tanca una agrupació encara que no
+    -- tots els productes estiguin marcats com a preparats. NULL = no tancada
+    -- manualment.
+    finalitzada_manual_at      TIMESTAMPTZ,
+    finalitzada_manual_per_id  INTEGER
 );
 
-CREATE INDEX IF NOT EXISTS idx_agrupacions_ts          ON agrupacions (ts DESC);
-CREATE INDEX IF NOT EXISTS idx_agrupacions_plantilla   ON agrupacions (plantilla) WHERE plantilla = TRUE;
-CREATE INDEX IF NOT EXISTS idx_agrupacions_created_by  ON agrupacions (created_by_id) WHERE created_by_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_agrupacions_ts                ON agrupacions (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_agrupacions_plantilla         ON agrupacions (plantilla) WHERE plantilla = TRUE;
+CREATE INDEX IF NOT EXISTS idx_agrupacions_created_by        ON agrupacions (created_by_id) WHERE created_by_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_agrupacions_finalitzada_manual ON agrupacions (finalitzada_manual_at) WHERE finalitzada_manual_at IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- Productes preparats per agrupació (estat operari magatzem)
@@ -109,6 +115,12 @@ DO $$ BEGIN
         FOREIGN KEY (marcat_per_id) REFERENCES usuaris(id) ON DELETE SET NULL;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+    ALTER TABLE agrupacions
+        ADD CONSTRAINT fk_agrupacions_finalitzada_manual_per
+        FOREIGN KEY (finalitzada_manual_per_id) REFERENCES usuaris(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 CREATE INDEX IF NOT EXISTS idx_productes_preparats_marcat_per
     ON productes_preparats (marcat_per_id) WHERE marcat_per_id IS NOT NULL;
 
@@ -133,8 +145,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_accio ON audit_logs (accio);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user  ON audit_logs (user_id) WHERE user_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
--- Vista: una agrupació es considera "finalitzada" quan tots els productes
--- del resultat ja estan marcats com preparats.
+-- Vista: una agrupació es considera "finalitzada" si l'oficina l'ha tancada
+-- manualment (finalitzada_manual_at NOT NULL) o si tots els productes ja
+-- estan marcats com a preparats.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_agrupacions_estat AS
 SELECT
@@ -144,7 +157,12 @@ SELECT
     a.plantilla,
     a.n_productes,
     COALESCE(p.n_preparats, 0) AS n_preparats,
-    (a.n_productes > 0 AND COALESCE(p.n_preparats, 0) >= a.n_productes) AS finalitzada
+    (
+        a.finalitzada_manual_at IS NOT NULL
+        OR (a.n_productes > 0 AND COALESCE(p.n_preparats, 0) >= a.n_productes)
+    ) AS finalitzada,
+    a.finalitzada_manual_at,
+    a.finalitzada_manual_per_id
 FROM agrupacions a
 LEFT JOIN (
     SELECT agrupacio_id, COUNT(*)::INTEGER AS n_preparats

@@ -55,14 +55,25 @@
     }
 
     // Rang d'ordenació per a la separació en blocs dins d'un mateix dia.
-    //   0 = granel    · 1 = AGRI    · 2 = Mª Soledad López    · 3 = resta
+    // Prioritat estricta — la primera regla que es compleix determina el bloc.
+    //   0 = GRA (granel)
+    //   1 = AGRI
+    //   2 = Mª Soledad López
+    //   3 = alerta capacitat (1 sola comanda i > 17.000 kg)
+    //   4 = transport 201 / 194
+    //   5 = transport 199
+    //   6 = resta
     function rangSort(c) {
         if (c.is_granel) return 0;
         const tra = (c.transportista || "").trim().toUpperCase();
         if (tra.startsWith("AGRI")) return 1;
         const traNorm = tra.normalize("NFD").replace(/[̀-ͯª]/g, "");
         if (traNorm.startsWith("M SOLEDAD LOPEZ")) return 2;
-        return 3;
+        if ((Number(c.num_comandes) || 0) === 1 && kgDeCarrega(c) > 17000) return 3;
+        const traCodi = (c.tra_codi || "").trim();
+        if (traCodi === "201" || traCodi === "194") return 4;
+        if (traCodi === "199") return 5;
+        return 6;
     }
 
     function kgDeCarrega(c) {
@@ -501,16 +512,6 @@
         li.dataset.tipus = c.is_granel ? "granel" : "saca";
         li.dataset.rang = String(rangSort(c));
         if (c.palletitzable === false) li.classList.add("is-no-palletitzable");
-        // Codis de transport amb identificació visual pròpia (només pinten quan
-        // no aplica un bloc superior — granel/AGRI/Mª Soledad — via CSS).
-        const traCodi = (c.tra_codi || "").trim();
-        if (traCodi === "199") li.classList.add("is-tra-199");
-        else if (traCodi === "201" || traCodi === "194") li.classList.add("is-tra-201-194");
-        // Alerta capacitat: 1 sola comanda i pes > 17.000 kg. Cada dia en poden
-        // entrar com a màxim 2 d'aquestes, per això es marquen molt visibles.
-        if ((Number(c.num_comandes) || 0) === 1 && kgDeCarrega(c) > 17000) {
-            li.classList.add("is-alerta-pes-alt");
-        }
         const traColor = colorPerTra(c.tra_codi);
         if (traColor) li.style.setProperty("--tra-color", traColor);
         // Guardem dades per al tooltip propi

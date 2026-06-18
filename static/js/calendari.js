@@ -106,10 +106,6 @@
     ];
     const TRA_COLOR_ALTRES = "#94a3b8"; // slate-400
 
-    // Constants visuals
-    const MAX_EVENTS_PER_CELLA = 6;   // si en sobren, mostrem (MAX-1) + "+N més"
-    const RANG_LABELS = ["GRA", "AGRI", "Mª SOLEDAD", "ALERTA >17.000", "201/194", "199", ""];
-
     const state = {
         any_: 0,
         mes: 0,
@@ -129,9 +125,7 @@
         traOrdre: [],          // tra_codi en l'ordre del top usats
         abortCtrl: null,
         modalAbort: null,
-        modalMode: "carrega",  // "carrega" | "dia"
-        scrollPendent: true,   // primer render: scrolla a la setmana de referència
-        semanaReferencia: null,// Date (dilluns) cap a la qual fer scroll
+        scrollPendent: true,   // primer render: scrolla a la setmana actual
     };
 
     // ---------------------------------------------------------------
@@ -380,9 +374,8 @@
         const grid = $("#cal-grid");
         const avuiIso = isoLocal(new Date());
         const avuiSetmanaIso = isoLocal(dilluns(new Date()));
-        const refSetmanaIso = state.semanaReferencia ? isoLocal(state.semanaReferencia) : avuiSetmanaIso;
         const frag = document.createDocumentFragment();
-        let celaScrollDesti = null;
+        let primeraCelaSetmanaActual = null;
 
         // 6 setmanes × 5 dies = 30 cel·les (només Dl-Dv).
         let d = new Date(state.diaInici);
@@ -390,28 +383,94 @@
             const ws = diaSetmana(d);
             if (ws < 5) {  // dilluns(0) a divendres(4) — saltem DS/DG
                 const iso = isoLocal(d);
-                const dillunsIso = isoLocal(dilluns(d));
                 const mesActual = (d.getMonth() + 1 === state.mes && d.getFullYear() === state.any_);
                 const isToday = iso === avuiIso;
-                const isCurrentWeek = dillunsIso === avuiSetmanaIso;
-                const isWeekFocus = dillunsIso === refSetmanaIso;
+                const isCurrentWeek = isoLocal(dilluns(d)) === avuiSetmanaIso;
                 const llista = state.carreguesPerDia.get(iso) || [];
 
                 const cell = document.createElement("div");
                 cell.className = "cal-cell"
                     + (mesActual ? "" : " is-other-month")
                     + (isToday ? " is-today" : "")
-                    + (isCurrentWeek ? " is-current-week" : "")
-                    + (isWeekFocus && !isCurrentWeek ? " is-week-focus" : "");
+                    + (isCurrentWeek ? " is-current-week" : "");
                 cell.setAttribute("role", "gridcell");
                 cell.dataset.date = iso;
-                if (isWeekFocus && !celaScrollDesti) celaScrollDesti = cell;
+                if (isCurrentWeek && !primeraCelaSetmanaActual) primeraCelaSetmanaActual = cell;
 
-                renderCellHead(cell, d, ws, llista);
+                const head = document.createElement("div");
+                head.className = "cal-cell-head";
+                const dayLbl = document.createElement("span");
+                dayLbl.className = "cal-cell-day";
+                dayLbl.textContent = DIES_CURT[ws];
+                head.appendChild(dayLbl);
+                const num = document.createElement("span");
+                num.className = "cal-cell-num";
+                num.textContent = String(d.getDate());
+                head.appendChild(num);
 
                 if (llista.length > 0) {
-                    renderCellList(cell, llista, iso);
-                    renderCellKgs(cell, llista);
+                    const badge = document.createElement("span");
+                    badge.className = "cal-cell-badge";
+                    badge.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">📦</span>${llista.length}`;
+                    badge.title = `${llista.length} càrregues`;
+                    head.appendChild(badge);
+
+                    // Kg totals a la capçalera (al costat del badge, amb icona ⚖)
+                    const sumKg = llista.reduce((acc, c) => acc + kgDeCarrega(c), 0);
+                    if (sumKg > 0) {
+                        const kgSpan = document.createElement("span");
+                        kgSpan.className = "cal-cell-kg";
+                        kgSpan.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">⚖</span>${escapeHtml(fmtKg0.format(sumKg))} kg`;
+                        kgSpan.title = `Total: ${fmtKg2.format(sumKg)} kg`;
+                        head.appendChild(kgSpan);
+                    }
+                }
+                cell.appendChild(head);
+
+                if (llista.length > 0) {
+                    const ul = document.createElement("ul");
+                    ul.className = "cal-cell-list";
+                    let rangAnt = null;
+                    for (const c of llista) {
+                        const liEvt = renderEvent(c, iso);
+                        const rang = rangSort(c);
+                        if (rangAnt !== null && rang !== rangAnt) {
+                            liEvt.classList.add("is-rang-break");
+                        }
+                        rangAnt = rang;
+                        ul.appendChild(liEvt);
+                    }
+                    cell.appendChild(ul);
+                }
+
+                // Desglossament Kg al peu del dia (després de la llista): una
+                // sola fila amb GRA · SACS · Total, cada valor seguit de "Kg".
+                if (llista.length > 0) {
+                    let kgGra = 0, kgSacs = 0;
+                    for (const c of llista) {
+                        const kg = kgDeCarrega(c);
+                        if (c.is_granel) kgGra += kg;
+                        else kgSacs += kg;
+                    }
+                    const kgTotal = kgGra + kgSacs;
+                    if (kgTotal > 0) {
+                        const kgBox = document.createElement("div");
+                        kgBox.className = "cal-cell-kgs";
+                        const fila = (cls, ico, lbl, val, tip) =>
+                            `<div class="cal-kg-line ${cls}" title="${escapeHtml(tip)}">` +
+                                `<span class="cal-kg-ico" aria-hidden="true">${ico}</span>` +
+                                `<span class="cal-kg-lbl">${lbl}</span>` +
+                                `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(val))} kg</span>` +
+                            `</div>`;
+                        const parts = [];
+                        if (kgGra > 0) parts.push(fila("is-gra", "🌾", "GRA", kgGra, `Granel: ${fmtKg2.format(kgGra)} kg`));
+                        if (kgSacs > 0) parts.push(fila("is-sacs", "📦", "SACS", kgSacs, `Sacs: ${fmtKg2.format(kgSacs)} kg`));
+                        if (kgGra > 0 && kgSacs > 0) {
+                            parts.push(fila("is-total", "Σ", "TOTAL", kgTotal, `Total: ${fmtKg2.format(kgTotal)} kg`));
+                        }
+                        kgBox.innerHTML = parts.join("");
+                        cell.appendChild(kgBox);
+                    }
                 }
                 frag.appendChild(cell);
             }
@@ -430,118 +489,12 @@
             wrap.classList.add("is-loaded");
         }
 
-        if (state.scrollPendent && celaScrollDesti) {
-            // Primer render, "Avui", o navegació de setmana: porta la fila destí
-            // a la vista. `behavior: 'auto'` (instant) per no fer scroll animat
-            // molest al carregar.
-            celaScrollDesti.scrollIntoView({ behavior: "auto", block: "center" });
+        if (state.scrollPendent && primeraCelaSetmanaActual) {
+            // Primer render o "Avui": porta la fila de la setmana actual a la vista.
+            // `behavior: 'auto'` (instant) per no fer scroll animat molest al carregar.
+            primeraCelaSetmanaActual.scrollIntoView({ behavior: "auto", block: "center" });
             state.scrollPendent = false;
         }
-    }
-
-    // --- Capçalera del dia (estructura DL/15 a l'esquerra · meta a la dreta) ---
-    function renderCellHead(cell, d, ws, llista) {
-        const head = document.createElement("div");
-        head.className = "cal-cell-head";
-
-        const dayWrap = document.createElement("div");
-        dayWrap.className = "cal-cell-day-wrap";
-        const dayLbl = document.createElement("span");
-        dayLbl.className = "cal-cell-day";
-        dayLbl.textContent = DIES_CURT[ws];
-        dayWrap.appendChild(dayLbl);
-        const num = document.createElement("span");
-        num.className = "cal-cell-num";
-        num.textContent = String(d.getDate());
-        dayWrap.appendChild(num);
-        head.appendChild(dayWrap);
-
-        if (llista.length > 0) {
-            const meta = document.createElement("div");
-            meta.className = "cal-cell-meta";
-            const badge = document.createElement("span");
-            badge.className = "cal-cell-badge";
-            badge.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">📦</span>${llista.length}`;
-            badge.title = `${llista.length} càrregues`;
-            meta.appendChild(badge);
-
-            const sumKg = llista.reduce((acc, c) => acc + kgDeCarrega(c), 0);
-            if (sumKg > 0) {
-                const kgSpan = document.createElement("span");
-                kgSpan.className = "cal-cell-kg";
-                kgSpan.innerHTML = `<span class="cal-cell-ico" aria-hidden="true">⚖</span>${escapeHtml(fmtKg0.format(sumKg))} kg`;
-                kgSpan.title = `Total: ${fmtKg2.format(sumKg)} kg`;
-                meta.appendChild(kgSpan);
-            }
-            head.appendChild(meta);
-        }
-        cell.appendChild(head);
-    }
-
-    // --- Llista d'events amb microetiquetes de rang i overflow "+N més" ---
-    function renderCellList(cell, llista, iso) {
-        const ul = document.createElement("ul");
-        ul.className = "cal-cell-list";
-
-        const overflow = llista.length > MAX_EVENTS_PER_CELLA;
-        const visibles = overflow ? llista.slice(0, MAX_EVENTS_PER_CELLA - 1) : llista;
-        let rangAnt = null;
-        for (const c of visibles) {
-            const rang = rangSort(c);
-            if (rang !== rangAnt) {
-                const lbl = RANG_LABELS[rang];
-                if (lbl) {
-                    const liLbl = document.createElement("li");
-                    liLbl.className = "cal-rang-label";
-                    liLbl.dataset.rang = String(rang);
-                    liLbl.textContent = lbl;
-                    ul.appendChild(liLbl);
-                }
-            }
-            const liEvt = renderEvent(c, iso);
-            rangAnt = rang;
-            ul.appendChild(liEvt);
-        }
-        if (overflow) {
-            const ocults = llista.length - visibles.length;
-            const liMore = document.createElement("li");
-            liMore.className = "cal-evt-more";
-            liMore.tabIndex = 0;
-            liMore.dataset.iso = iso;
-            liMore.textContent = `+ ${ocults} càrrega${ocults > 1 ? "s" : ""} més`;
-            liMore.title = `Veure les ${llista.length} càrregues del dia`;
-            ul.appendChild(liMore);
-        }
-        cell.appendChild(ul);
-    }
-
-    // --- Mini-card de kg al peu del dia ---
-    function renderCellKgs(cell, llista) {
-        let kgGra = 0, kgSacs = 0;
-        for (const c of llista) {
-            const kg = kgDeCarrega(c);
-            if (c.is_granel) kgGra += kg;
-            else kgSacs += kg;
-        }
-        const kgTotal = kgGra + kgSacs;
-        if (kgTotal <= 0) return;
-
-        const kgBox = document.createElement("div");
-        kgBox.className = "cal-cell-kgs";
-        const fila = (cls, ico, lbl, val, tip) =>
-            `<div class="cal-kg-line ${cls}" title="${escapeHtml(tip)}">` +
-                `<span class="cal-kg-ico" aria-hidden="true">${ico}</span>` +
-                `<span class="cal-kg-lbl">${lbl}</span>` +
-                `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(val))} kg</span>` +
-            `</div>`;
-        const parts = [];
-        if (kgGra > 0) parts.push(fila("is-gra", "🌾", "GRA", kgGra, `Granel: ${fmtKg2.format(kgGra)} kg`));
-        if (kgSacs > 0) parts.push(fila("is-sacs", "📦", "SACS", kgSacs, `Sacs: ${fmtKg2.format(kgSacs)} kg`));
-        if (kgGra > 0 && kgSacs > 0) {
-            parts.push(fila("is-total", "Σ", "TOTAL", kgTotal, `Total: ${fmtKg2.format(kgTotal)} kg`));
-        }
-        kgBox.innerHTML = parts.join("");
-        cell.appendChild(kgBox);
     }
 
     function renderEvent(c, isoData) {
@@ -693,7 +646,6 @@
         if (state.modalAbort) state.modalAbort.abort();
         const ctrl = new AbortController();
         state.modalAbort = ctrl;
-        state.modalMode = "carrega";
 
         const dlg = $("#cal-modal");
         $("#cal-modal-titol").textContent = `Càrrega ${carregaId}`;
@@ -792,42 +744,6 @@
         if (typeof dlg.close === "function") dlg.close();
         else dlg.removeAttribute("open");
         if (state.modalAbort) { state.modalAbort.abort(); state.modalAbort = null; }
-        state.modalMode = "carrega";
-    }
-
-    // Modal "Càrregues del dia" — disparat des de "+N més" quan una cel·la té
-    // més events que MAX_EVENTS_PER_CELLA. Mostra una llista clickable; cada
-    // entrada obre el modal de detall de càrrega.
-    function obrirModalDia(iso) {
-        if (!iso) return;
-        const llista = state.carreguesPerDia.get(iso) || [];
-        if (llista.length === 0) return;
-        if (state.modalAbort) { state.modalAbort.abort(); state.modalAbort = null; }
-        state.modalMode = "dia";
-
-        const [yy, mm, dd] = iso.split("-").map(Number);
-        const dataTxt = capitalitzar(fmtDiaLlarg.format(new Date(yy, mm - 1, dd)));
-        const dlg = $("#cal-modal");
-        $("#cal-modal-titol").textContent = dataTxt;
-        const sumKg = llista.reduce((acc, c) => acc + kgDeCarrega(c), 0);
-        $("#cal-modal-meta").innerHTML =
-            `<div class="cal-modal-meta-row"><span class="muted">Càrregues:</span> <strong>${llista.length}</strong></div>` +
-            (sumKg > 0 ? `<div class="cal-modal-meta-row"><span class="muted">Pes total:</span> <strong>${escapeHtml(fmtKg2.format(sumKg))} kg</strong></div>` : "");
-
-        const items = llista.map(c => {
-            const nom = (c.car_descripcion || "").trim() || c.carrega_id || "—";
-            const kg = kgDeCarrega(c);
-            const transp = (c.transportista || c.tra_codi || "").trim();
-            const rang = rangSort(c);
-            return `<li class="cal-day-item" data-id="${escapeHtml(c.carrega_id)}" data-rang="${rang}" tabindex="0">
-                <span class="cal-day-nom">${escapeHtml(nom)}</span>
-                <span class="cal-day-tra muted">${escapeHtml(transp)}</span>
-                <span class="cal-day-kg">${kg > 0 ? escapeHtml(fmtKg0.format(kg)) + " kg" : ""}</span>
-            </li>`;
-        }).join("");
-        $("#cal-modal-body").innerHTML = `<ul class="cal-day-list">${items}</ul>`;
-        if (typeof dlg.showModal === "function") dlg.showModal();
-        else dlg.setAttribute("open", "");
     }
 
     // ---------------------------------------------------------------
@@ -839,12 +755,6 @@
         const { inici, fi } = rangMesVisible(any, mes);
         state.diaInici = inici;
         state.diaFi = fi;
-        // Si la setmana de referència no cau dins del rang visible del mes,
-        // la posem a la setmana del dia 1 del mes nou (per no scrollar a no res).
-        const r = state.semanaReferencia;
-        if (!r || r < inici || r > fi) {
-            state.semanaReferencia = dilluns(ferDataLocal(any, mes, 1));
-        }
         actualitzaTitol();
         carregaMes();
     }
@@ -852,40 +762,12 @@
         let m = state.mes + delta, y = state.any_;
         while (m < 1) { m += 12; y--; }
         while (m > 12) { m -= 12; y++; }
-        // En canviar de mes deixa que `anarA` reajusti la setmana de referència
-        state.semanaReferencia = null;
-        state.scrollPendent = true;
         anarA(y, m);
     }
     function anarAvui() {
         state.scrollPendent = true;
         const t = new Date();
-        state.semanaReferencia = dilluns(t);
         anarA(t.getFullYear(), t.getMonth() + 1);
-    }
-    // Setmana anterior/següent: avança el dilluns de referència ±7 dies. Si
-    // surt del mes vist, canvia de mes; si no, només es re-renderitza i fa
-    // scroll a la nova setmana.
-    function anarSetmana(delta) {
-        const base = state.semanaReferencia || dilluns(new Date());
-        const nova = new Date(base);
-        nova.setDate(nova.getDate() + 7 * delta);
-        state.semanaReferencia = dilluns(nova);
-        state.scrollPendent = true;
-        const mesNou = nova.getMonth() + 1;
-        const anyNou = nova.getFullYear();
-        if (mesNou !== state.mes || anyNou !== state.any_) {
-            // No reseta semanaReferencia (anarA la respecta perquè cau dins del nou rang)
-            state.any_ = anyNou;
-            state.mes = mesNou;
-            const { inici, fi } = rangMesVisible(anyNou, mesNou);
-            state.diaInici = inici;
-            state.diaFi = fi;
-            actualitzaTitol();
-            carregaMes();
-        } else {
-            renderGrid();
-        }
     }
 
     // ---------------------------------------------------------------
@@ -961,13 +843,10 @@
     // ---------------------------------------------------------------
     function init() {
         const t = new Date();
-        state.semanaReferencia = dilluns(t);
         anarA(t.getFullYear(), t.getMonth() + 1);
 
         $("#cal-prev").addEventListener("click", () => anarMes(-1));
         $("#cal-next").addEventListener("click", () => anarMes(1));
-        $("#cal-week-prev").addEventListener("click", () => anarSetmana(-1));
-        $("#cal-week-next").addEventListener("click", () => anarSetmana(1));
         $("#cal-avui").addEventListener("click", anarAvui);
 
         // Llegenda: click a chip filtra per transportista
@@ -1009,54 +888,17 @@
             if (dlg && dlg.hasAttribute("open")) return;  // tecles dins el modal: deixa que <dialog> gestioni Esc
             if (e.key === "ArrowLeft") { e.preventDefault(); anarMes(-1); }
             else if (e.key === "ArrowRight") { e.preventDefault(); anarMes(1); }
-            else if (e.key === "ArrowUp") { e.preventDefault(); anarSetmana(-1); }
-            else if (e.key === "ArrowDown") { e.preventDefault(); anarSetmana(1); }
             else if (e.key === "Home") { e.preventDefault(); anarAvui(); }
         });
 
         const grid = $("#cal-grid");
-        // Estat compartit click/long-press: si long-press ha mostrat tooltip,
-        // el `click` derivat (a touch end) ha de ser ignorat — no volem
-        // obrir el modal.
-        let lpTimer = null;
-        let lpActiu = false;
-
         const onClickEvt = (e) => {
-            // "+N més" → modal "Càrregues del dia"
-            const more = e.target.closest(".cal-evt-more");
-            if (more) {
-                const iso = more.dataset.iso || more.closest(".cal-cell")?.dataset.date;
-                if (iso) obrirModalDia(iso);
-                return;
-            }
             const evt = e.target.closest(".cal-evt, .cal-cs-item");
             if (!evt) return;
-            if (lpActiu) {
-                // Aquest click ve d'un long-press touch: només suprimim
-                // l'acció (tooltip ja és visible).
-                lpActiu = false;
-                e.preventDefault();
-                return;
-            }
             obrirModal(evt.dataset.id);
         };
         grid.addEventListener("click", onClickEvt);
         $("#cal-capsetmana-llista").addEventListener("click", onClickEvt);
-
-        // Click dins el modal "Càrregues del dia" → obre el detall de càrrega
-        $("#cal-modal-body").addEventListener("click", (e) => {
-            const item = e.target.closest(".cal-day-item");
-            if (!item) return;
-            const id = item.dataset.id;
-            if (id) obrirModal(id);
-        });
-        $("#cal-modal-body").addEventListener("keydown", (e) => {
-            if (e.key !== "Enter" && e.key !== " ") return;
-            const item = e.target.closest(".cal-day-item");
-            if (!item) return;
-            e.preventDefault();
-            obrirModal(item.dataset.id);
-        });
 
         // Tooltip propi (substitueix l'atribut title natiu). Mouseover/mouseout
         // bubbleejen i els filtrem per `closest(".cal-evt, .cal-cs-item")`.
@@ -1081,35 +923,6 @@
         $("#cal-capsetmana-llista").addEventListener("mouseout",  onMouseOut);
         window.addEventListener("scroll", amagaTooltip, true);
         window.addEventListener("resize", amagaTooltip);
-
-        // Long-press a touch: 500 ms sobre un event mostra el tooltip; el
-        // `click` posterior queda anul·lat (no obre modal). Si l'usuari fa
-        // scroll o aixeca el dit abans, comportament normal (tap = modal).
-        const cancelLp = () => {
-            if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
-        };
-        const onTouchStart = (e) => {
-            const evt = e.target.closest(".cal-evt, .cal-cs-item");
-            if (!evt) return;
-            cancelLp();
-            lpActiu = false;
-            lpTimer = setTimeout(() => {
-                const c = evt._cal || (evt.dataset.id && trobaCarreguaLocal(evt.dataset.id));
-                if (c) {
-                    mostraTooltip(evt, c);
-                    lpActiu = true;
-                }
-                lpTimer = null;
-            }, 500);
-        };
-        grid.addEventListener("touchstart", onTouchStart, { passive: true });
-        grid.addEventListener("touchmove", cancelLp, { passive: true });
-        grid.addEventListener("touchend", cancelLp);
-        grid.addEventListener("touchcancel", cancelLp);
-        $("#cal-capsetmana-llista").addEventListener("touchstart", onTouchStart, { passive: true });
-        $("#cal-capsetmana-llista").addEventListener("touchmove", cancelLp, { passive: true });
-        $("#cal-capsetmana-llista").addEventListener("touchend", cancelLp);
-        $("#cal-capsetmana-llista").addEventListener("touchcancel", cancelLp);
 
         // Cerca per text
         const cercaInput = $("#cal-cerca");

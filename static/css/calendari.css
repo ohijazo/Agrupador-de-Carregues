@@ -416,19 +416,28 @@
     justify-content: flex-start;
     align-items: baseline;
     gap: .45rem;
-    margin-bottom: .55rem;
-    padding-bottom: .4rem;
-    border-bottom: 1px solid var(--gray-100);
+    /* La capçalera ocupa tota l'amplada de la cel·la (negative margin
+       neutralitza el padding del .cal-cell) i té un fons lleugerament
+       més fosc per separar-se visualment del cos del dia. */
+    margin: -.5rem -.55rem .6rem -.55rem;
+    padding: .4rem .55rem;
+    background: rgba(15, 23, 42, .04);
+    border-bottom: 1px solid var(--gray-200);
+}
+/* "Avui" — tinge blava al header per fer-lo encara més evident. */
+.cal-cell.is-today .cal-cell-head {
+    background: rgba(44, 82, 130, .12);
+    border-bottom-color: rgba(44, 82, 130, .25);
 }
 
-/* Etiqueta del dia de la setmana — més petita i secundària, perquè el
-   número del dia destaqui per sobre. */
+/* Etiqueta del dia de la setmana — pes propi, però secundària respecte
+   al número. */
 .cal-cell-day {
-    font-size: .62rem;
+    font-size: .82rem;
     font-weight: 700;
-    color: var(--gray-500);
+    color: var(--gray-600);
     text-transform: uppercase;
-    letter-spacing: .08em;
+    letter-spacing: .06em;
     line-height: 1;
 }
 .cal-cell.is-today .cal-cell-day { color: var(--primary); }
@@ -970,8 +979,12 @@
 
 @media (max-width: 700px) {
     .cal-cell { min-height: 96px; padding: .3rem; }
-    .cal-cell-head { margin-bottom: .25rem; gap: .25rem; }
-    .cal-cell-day { font-size: .55rem; }
+    .cal-cell-head {
+        margin: -.3rem -.3rem .35rem -.3rem;
+        padding: .3rem .35rem;
+        gap: .3rem;
+    }
+    .cal-cell-day { font-size: .7rem; letter-spacing: .04em; }
     .cal-cell-num { font-size: 1rem; padding: .15rem .3rem; }
     .cal-cell.is-today .cal-cell-num { min-width: 1.6rem; }
     .cal-cell-kg { display: none; }

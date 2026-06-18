@@ -117,11 +117,11 @@
 }
 .mag-llista-bar .mag-toggle { font-size: .95rem; }
 
-/* Badge "ACABADA" al títol */
-.badge-acabada {
+/* Badge "ACABADA" / "TANCADA" al títol */
+.badge-acabada,
+.badge-tancada {
     display: inline-block;
     margin-left: .55rem;
-    background: #38a169;
     color: #fff;
     font-size: .68rem;
     font-weight: 700;
@@ -130,6 +130,8 @@
     border-radius: 999px;
     vertical-align: middle;
 }
+.badge-acabada { background: #38a169; }
+.badge-tancada { background: #c2410c; }
 
 /* Llista d'agrupacions desades */
 .mag-llista {

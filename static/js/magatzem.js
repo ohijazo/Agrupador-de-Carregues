@@ -69,6 +69,8 @@ async function fetchJ(url, opts = {}) {
 
 // ---- Vista LLISTA ------------------------------------------------------
 const _isAcabada = (it) => (it.n_productes || 0) > 0 && (it.n_preparats || 0) >= (it.n_productes || 0);
+const _isTancada = (it) => !!it.finalitzada_manual_at;
+const _isFinalitzada = (it) => _isTancada(it) || _isAcabada(it);
 
 function _pintaLlistaItems(items) {
     const ul = $m("#mag-llista");
@@ -76,15 +78,20 @@ function _pintaLlistaItems(items) {
     for (const it of items) {
         const li = document.createElement("li");
         const pendents = (it.n_productes || 0) - (it.n_preparats || 0);
-        const acabada = _isAcabada(it);
+        const tancada = _isTancada(it);
+        const acabada = !tancada && _isAcabada(it);
+        const finalitzada = tancada || acabada;
+        let badge = "";
+        if (tancada) badge = '<span class="badge-tancada">TANCADA</span>';
+        else if (acabada) badge = '<span class="badge-acabada">ACABADA</span>';
         const creador = it.created_by_nom
             ? `<span class="mag-llista-creador">· ${escapeM(it.created_by_nom)}</span>`
             : "";
         li.innerHTML = `
-            <a href="/magatzem/${encodeURIComponent(it.id)}" class="${acabada ? "is-acabada" : ""}">
+            <a href="/magatzem/${encodeURIComponent(it.id)}" class="${finalitzada ? "is-acabada" : ""}">
                 <div class="nom">
                     ${escapeM(it.nom)}
-                    ${acabada ? '<span class="badge-acabada">ACABADA</span>' : ""}
+                    ${badge}
                 </div>
                 <div class="meta">
                     ${escapeM(fmtData(it.ts))} ${creador} · ${it.n_carregues} càrregues · ${it.n_productes} productes · ${fmtN.format(it.total_palets_fisics)} palets
@@ -115,21 +122,21 @@ window.magatzemLlista = async function magatzemLlista() {
         return;
     }
 
-    const acabades = items.filter(_isAcabada);
-    const pendents = items.filter(it => !_isAcabada(it));
+    const finalitzades = items.filter(_isFinalitzada);
+    const obertes = items.filter(it => !_isFinalitzada(it));
 
-    // Sempre mostrem la barra amb el comptador (per recuperar les acabades)
+    // Sempre mostrem la barra amb el comptador (per recuperar les finalitzades)
     bar.hidden = false;
-    countEl.textContent = acabades.length;
+    countEl.textContent = finalitzades.length;
 
     const refresca = () => {
         const mostrar = toggle.checked;
-        const llista = mostrar ? items : pendents;
+        const llista = mostrar ? items : obertes;
         if (llista.length === 0) {
             $m("#mag-llista").innerHTML = "";
             buit.hidden = true;
-            // Si totes són acabades i no es mostren, ho indiquem
-            totesAcabades.hidden = !(acabades.length > 0);
+            // Si totes són finalitzades i no es mostren, ho indiquem
+            totesAcabades.hidden = !(finalitzades.length > 0);
         } else {
             totesAcabades.hidden = true;
             buit.hidden = true;

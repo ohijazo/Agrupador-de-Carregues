@@ -538,7 +538,7 @@
 /* --- Llista d'esdeveniments --------------------------------- */
 .cal-cell-list {
     list-style: none;
-    margin: 0;
+    margin: 0 0 .6rem 0;       /* separa de la mini-card de totals sota */
     padding: 0;
     display: flex;
     flex-direction: column;

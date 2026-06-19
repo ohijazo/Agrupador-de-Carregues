@@ -595,6 +595,10 @@ function llistaVisible() {
                 const e = estatAgrupacio(c);
                 return e ? e.info.nom : "";
             }
+            if (col === "car_fecsalida") {
+                // Ordena per data + hora (ISO és lexicogràficament ordenable)
+                return (c.car_fecsalida || "") + (c.car_fecsalida_hora ? " " + c.car_fecsalida_hora : "");
+            }
             return c[col];
         };
         llista.sort((a, b) => {

@@ -951,8 +951,15 @@ def api_pbi_carregues():
     return jsonify(files)
 
 
-@app.route("/health")
-def health():
+# Cache curta per a /health: comprovar SQL Server + PG + motor a cada
+# request és costós (~500ms vist al log). Cachegem el resultat uns segons
+# perquè el monitoring (que típicament fa poll cada 30s o més) no saturi
+# els workers. TTL configurable per env HEALTH_CACHE_TTL_MS.
+_HEALTH_CACHE = {"ts": 0.0, "body": None, "status": 200}
+_HEALTH_LOCK = Lock()
+
+
+def _calc_health():
     ok_db = ok_motor = ok_pg = False
     msg_db = msg_motor = msg_pg = ""
     try:
@@ -977,9 +984,6 @@ def health():
     except Exception as e:
         msg_motor = str(e)[:200]
     status = 200 if (ok_db and ok_motor and ok_pg) else 503
-    # A producció no exposem els missatges d'error interns (poden filtrar
-    # informació sobre la BD/configuració). Cal posar EXPOSE_HEALTH_DETAIL=true
-    # al .env per a recuperar els missatges (només per a depuració local).
     expose_detail = (os.environ.get("EXPOSE_HEALTH_DETAIL", "").strip().lower()
                      in ("1", "true", "yes"))
     body = {
@@ -992,6 +996,27 @@ def health():
         body["db"]["msg"] = msg_db
         body["motor"]["msg"] = msg_motor
         body["pg"]["msg"] = msg_pg
+    return body, status
+
+
+@app.route("/health")
+def health():
+    try:
+        ttl_ms = int(os.environ.get("HEALTH_CACHE_TTL_MS", "5000"))
+    except ValueError:
+        ttl_ms = 5000
+    now = time.monotonic()
+    with _HEALTH_LOCK:
+        cached_ts = _HEALTH_CACHE["ts"]
+        cached_body = _HEALTH_CACHE["body"]
+        cached_status = _HEALTH_CACHE["status"]
+    if cached_body is not None and (now - cached_ts) * 1000 < ttl_ms:
+        return jsonify(cached_body), cached_status
+    body, status = _calc_health()
+    with _HEALTH_LOCK:
+        _HEALTH_CACHE["ts"] = now
+        _HEALTH_CACHE["body"] = body
+        _HEALTH_CACHE["status"] = status
     return jsonify(body), status
 
 

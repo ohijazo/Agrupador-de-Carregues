@@ -158,9 +158,33 @@ let magState = {
     pollTimer: null,
     lastInteractionTs: 0,    // moment de l'últim tap (per no repintar enmig)
     pendingRefresh: null,    // objecte rebut durant interacció (s'aplica després)
+    lastSig: null,           // signatura del darrer poll (n_preparats + finalitzada)
+    consecutiveNoChange: 0,  // polls consecutius sense canvis (backoff)
+    lastPct: null,           // % preparat del darrer render (null = abans del primer render)
 };
 
 const INTERACCIO_MS = 1200;  // marge per protegir tocs en curs del polling
+
+// Backoff polling: si N polls consecutius sense canvis, allarguem l'interval
+// per estalviar bateria/xarxa a la tablet. Reset immediat en qualsevol acció
+// local o canvi detectat des del servidor.
+function _calcPollDelay() {
+    const n = magState.consecutiveNoChange;
+    if (n < 2) return 5000;
+    if (n < 4) return 10000;
+    return 15000;
+}
+
+function _signaturaObj(obj) {
+    if (!obj) return "";
+    const np = (obj.productes_preparats || []).length;
+    const fm = obj.finalitzada_manual_at || "";
+    return `${np}|${fm}`;
+}
+
+function _resetPollBackoff() {
+    magState.consecutiveNoChange = 0;
+}
 
 function colorPerCarregaIdx(i) {
     return PALETA_MAG[i % PALETA_MAG.length];
@@ -172,7 +196,8 @@ function calculaProgres() {
     $m("#mag-prep-count").textContent = prep;
     $m("#mag-total").textContent = total;
     const pct = total ? Math.round((prep / total) * 100) : 0;
-    $m("#mag-progres-fill").style.width = `${pct}%`;
+    const fill = $m("#mag-progres-fill");
+    if (fill) fill.style.width = `${pct}%`;
     const resum = magState.obj?.resultat;
     if (resum) {
         $m("#mag-resum").textContent =
@@ -182,6 +207,20 @@ function calculaProgres() {
     if (creadorEl) creadorEl.textContent = magState.obj?.created_by_nom || "—";
     const btnDesfes = $m("#mag-desfes");
     if (btnDesfes) btnDesfes.hidden = prep === 0;
+
+    // Feedback unequívoc en arribar al 100% (toast + vibració distintiva +
+    // estat visual). Només es dispara a la transició <100 → 100 — no a cada
+    // render, ni si l'operari ja arriba a 100 des de polling inicial.
+    const prev = magState.lastPct;
+    magState.lastPct = pct;
+    const wrap = $m(".mag-progres-box");
+    if (wrap) wrap.classList.toggle("is-acabada", pct === 100 && total > 0);
+    if (pct === 100 && total > 0 && prev < 100 && prev !== null) {
+        toast("success", `Agrupació completada — ${total} productes preparats`);
+        if (navigator.vibrate) {
+            try { navigator.vibrate([200, 80, 200]); } catch {}
+        }
+    }
 }
 
 function renderArticles() {
@@ -269,6 +308,18 @@ function renderArticles() {
 async function refrescar({ fromPolling = false } = {}) {
     try {
         const obj = await fetchJ(`/api/agrupacions/${encodeURIComponent(magState.id)}`);
+        // Detecta canvis per a backoff polling (independentment del defer).
+        if (fromPolling) {
+            const sig = _signaturaObj(obj);
+            if (magState.lastSig === sig) {
+                magState.consecutiveNoChange += 1;
+            } else {
+                magState.consecutiveNoChange = 0;
+                magState.lastSig = sig;
+            }
+        } else {
+            magState.lastSig = _signaturaObj(obj);
+        }
         const ara = Date.now();
         if (fromPolling && ara - magState.lastInteractionTs < INTERACCIO_MS) {
             // L'operari ha tocat fa molt poc: no repintem perquè no es perdi
@@ -288,6 +339,7 @@ async function refrescar({ fromPolling = false } = {}) {
 
 async function togglePreparat(artCodi, nouEstat) {
     magState.lastInteractionTs = Date.now();
+    _resetPollBackoff();  // hi ha activitat — torna a polls de 5s
     // Feedback tàctil immediat (vibració a tablet/mòbil).
     if (navigator.vibrate) {
         try { navigator.vibrate(nouEstat ? 60 : [30, 40, 30]); } catch {}
@@ -324,6 +376,7 @@ async function desferPreparats() {
         tipus: "danger",
     });
     if (!ok) return;
+    _resetPollBackoff();  // hi ha activitat — torna a polls de 5s
     try {
         await fetchJ(`/api/agrupacions/${encodeURIComponent(magState.id)}/reset-preparats`, {
             method: "POST",
@@ -422,22 +475,23 @@ window.magatzemPrep = async function magatzemPrep(id) {
         });
     }
 
-    // Polling de sincronització cada 5s — només quan la pestanya és visible.
-    // Si hi ha hagut interacció recent (tap a un check), el render es difereix
-    // perquè no s'esborri el feedback visual mentre l'operari acaba el toc.
+    // Polling de sincronització amb backoff (5s → 10s → 15s) si no hi ha
+    // canvis. Només quan la pestanya és visible. Si hi ha hagut interacció
+    // recent (tap a un check), el render es difereix perquè no s'esborri el
+    // feedback visual mentre l'operari acaba el toc.
     function programaPoll() {
         clearTimeout(magState.pollTimer);
         if (document.hidden) return;
         magState.pollTimer = setTimeout(async () => {
             await refrescar({ fromPolling: true });
-            // Si s'havia diferit per interacció, reintentem aviat sense esperar
-            // els 5 s sencers
+            // Si s'havia diferit per interacció, reintentem aviat (no
+            // s'aplica el backoff perquè ens devem un render pendent)
             if (magState.pendingRefresh) {
                 magState.pollTimer = setTimeout(programaPoll, 1500);
             } else {
                 programaPoll();
             }
-        }, 5000);
+        }, _calcPollDelay());
     }
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) clearTimeout(magState.pollTimer);

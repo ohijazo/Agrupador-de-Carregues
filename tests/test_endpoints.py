@@ -149,12 +149,21 @@ def test_agrupar_409_si_ja_agrupada(client, monkeypatch):
         "nom": "Activa", "carregues": [_carrega("2026/01/0000777")], "resultat": _resultat(),
     })
     assert r.status_code == 200
+    agrup_id = r.get_json()["id"]
     # Provem d'agrupar la mateixa càrrega → 409
     r = client.post("/api/agrupar", json={"carregues": [_carrega("2026/01/0000777")]})
     assert r.status_code == 409
     d = r.get_json()
     assert "duplicats" in d
-    assert d["duplicats"][0]["carrega_id"] == "2026/01/0000777"
+    dup = d["duplicats"][0]
+    assert dup["carrega_id"] == "2026/01/0000777"
+    # La resposta ha d'incloure l'agrupació afectada amb id+nom per al
+    # deep-link del modal de duplicats (botons "Veure" i "Eliminar").
+    assert dup.get("agrupacions"), "Falta llistat d'agrupacions afectades"
+    ag = dup["agrupacions"][0]
+    assert ag.get("id") == agrup_id
+    assert ag.get("nom") == "Activa"
+    assert "finalitzada" in ag
 
 
 def test_agrupar_finalitzada_tambe_bloqueja(client):

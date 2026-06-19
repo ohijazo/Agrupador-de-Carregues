@@ -1732,6 +1732,54 @@ body.has-action-bar main.container { padding-bottom: 96px; }
     margin: 0 .1rem;
 }
 
+/* --- Modal de duplicats (conflicte 409 "una càrrega = una agrupació") --- */
+#duplicats-dialog { max-width: 640px; }
+.dup-list { list-style: none; margin: .5rem 0 1rem; padding: 0; }
+.dup-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: .75rem;
+    padding: .55rem .65rem;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    margin-bottom: .4rem;
+    background: var(--gray-50);
+}
+.dup-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem;
+    min-width: 0;
+    flex: 1;
+}
+.dup-carrega {
+    background: #fff;
+    border: 1px solid var(--gray-300);
+    padding: .05rem .35rem;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .82rem;
+}
+.dup-arrow { color: var(--gray-500); }
+.dup-nom { font-weight: 600; }
+.dup-data { color: var(--gray-500); font-size: .82rem; }
+.dup-estat {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    padding: .1rem .4rem;
+    border-radius: 999px;
+}
+.dup-estat-fin { background: #e0e7ff; color: #3730a3; }
+.dup-estat-act { background: #d1fae5; color: #065f46; }
+.dup-actions { display: flex; gap: .35rem; flex-shrink: 0; }
+@media (max-width: 640px) {
+    .dup-row { flex-direction: column; align-items: stretch; }
+    .dup-actions { justify-content: flex-end; }
+}
+
 /* --- Responsive --- */
 @media (max-width: 1024px) {
     .filters-grid {

@@ -539,6 +539,10 @@ async function buscarCarregues(append = false) {
         renderLlistaCarregues();
         actualitzarBannerPlantilles();
         if (!append) aplicaFocusPendent();
+        // Prefetch del detall de les primeres N visibles en idle (només si
+        // és cerca nova, no append: l'append típicament afegeix files fora
+        // de la vista immediata).
+        if (!append) prefetchDetallsCarregues(state.carregues);
     } catch (e) {
         if (e.name !== "AbortError") {
             showToast("error", "Error cercant càrregues", e.message);
@@ -925,6 +929,47 @@ function actualitzarBotoAgrupar() {
 // ============================================================
 const detallCache = new Map();
 
+// Prefetch silenciós del detall de les primeres N càrregues visibles.
+// S'executa en idle del navegador: si l'operari expandeix una càrrega
+// llavors el render és instantani (sense spinner de "Carregant contingut…").
+// Errors es silencien — si fallen, l'expansió manual ja farà el seu camí.
+const PREFETCH_TOP_N = 8;
+let _prefetchAbort = null;
+function prefetchDetallsCarregues(carregues) {
+    if (!Array.isArray(carregues) || carregues.length === 0) return;
+    if (_prefetchAbort) _prefetchAbort.abort();
+    _prefetchAbort = new AbortController();
+    const sig = _prefetchAbort.signal;
+    const pending = carregues
+        .slice(0, PREFETCH_TOP_N)
+        .filter(c => c && c.carrega_id && !detallCache.has(c.carrega_id));
+    if (pending.length === 0) return;
+
+    const run = () => {
+        // Seqüencial per no saturar el motor d'embalatges del backend.
+        (async () => {
+            for (const c of pending) {
+                if (sig.aborted) return;
+                if (detallCache.has(c.carrega_id)) continue;
+                try {
+                    const params = new URLSearchParams({
+                        eje: c.eje_ejercicio, sca: c.sca_serie, car: c.car_numero,
+                    });
+                    const data = await fetch(`/api/carrega-detall?${params}`, {
+                        credentials: "same-origin", signal: sig,
+                    }).then(r => r.ok ? r.json() : null);
+                    if (data) detallCache.set(c.carrega_id, data);
+                } catch { /* silent — el botó d'expandir caurà al GET normal */ }
+            }
+        })();
+    };
+    if ("requestIdleCallback" in window) {
+        requestIdleCallback(run, { timeout: 2000 });
+    } else {
+        setTimeout(run, 50);
+    }
+}
+
 async function toggleDetallCarrega(c, tr, btn) {
     const existing = tr.nextElementSibling;
     if (existing && existing.classList.contains("row-detall-carrega")) {
@@ -1097,7 +1142,10 @@ async function agrupar() {
 
 function mostrarConflicteDuplicats(duplicats) {
     // Una càrrega només pot estar en una agrupació. El diàleg llista les
-    // conflictives amb enllaç al magatzem; cal eliminar la vella per agrupar de nou.
+    // conflictives amb dos accions per cada agrupació afectada: "Veure"
+    // (la carrega al modal de resultat per inspeccionar-la) i "Eliminar"
+    // (acció ràpida amb confirmació, perquè l'operari pugui desbloquejar
+    // l'agrupació sense canviar de pantalla).
     let dlg = $("#duplicats-dialog");
     if (!dlg) {
         dlg = document.createElement("dialog");
@@ -1107,7 +1155,22 @@ function mostrarConflicteDuplicats(duplicats) {
     }
     const files = duplicats.map(d => {
         const ag = d.agrupacions[0];
-        return `<li><code>${escapeHtml(d.carrega_id)}</code> → <button type="button" class="link-button" data-act="obrir-agrupacio" data-id="${escapeHtml(ag.id)}">${escapeHtml(ag.nom)}</button></li>`;
+        const estat = ag.finalitzada ? '<span class="dup-estat dup-estat-fin">FINALITZADA</span>' : '<span class="dup-estat dup-estat-act">EN PREPARACIÓ</span>';
+        const data = ag.ts ? `<span class="dup-data">${escapeHtml(fmtData(ag.ts))}</span>` : "";
+        return `
+            <li class="dup-row">
+                <div class="dup-info">
+                    <code class="dup-carrega">${escapeHtml(d.carrega_id)}</code>
+                    <span class="dup-arrow" aria-hidden="true">→</span>
+                    <span class="dup-nom">${escapeHtml(ag.nom)}</span>
+                    ${estat}
+                    ${data}
+                </div>
+                <div class="dup-actions">
+                    <button type="button" class="btn btn-sm" data-act="veure" data-id="${escapeHtml(ag.id)}">Veure</button>
+                    <button type="button" class="btn btn-sm btn-danger" data-act="eliminar" data-id="${escapeHtml(ag.id)}" data-nom="${escapeHtml(ag.nom)}" data-cid="${escapeHtml(d.carrega_id)}">Eliminar</button>
+                </div>
+            </li>`;
     }).join("");
     dlg.innerHTML = `
         <header>
@@ -1115,20 +1178,49 @@ function mostrarConflicteDuplicats(duplicats) {
             <button class="dialog-close" data-close aria-label="Tanca">×</button>
         </header>
         <div style="padding: 1rem 1.25rem">
-            <p>Les següents càrregues ja són en una agrupació:</p>
-            <ul style="margin: .5rem 0 1rem; padding-left: 1.25rem">${files}</ul>
-            <p class="muted" style="font-size:.85rem">Una càrrega només pot estar en una agrupació. Elimina l'agrupació existent si vols tornar a agrupar-la.</p>
+            <p>Les següents càrregues ja són en una agrupació. Una càrrega només pot estar en una agrupació:</p>
+            <ul class="dup-list">${files}</ul>
+            <p class="muted" style="font-size:.85rem">Per agrupar-les de nou, elimina l'agrupació existent.</p>
             <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:.75rem">
-                <button type="button" class="btn btn-primary" data-close>D'acord</button>
+                <button type="button" class="btn" data-close>Tanca</button>
             </div>
         </div>
     `;
     dlg.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => dlg.close()));
-    dlg.querySelectorAll('[data-act="obrir-agrupacio"]').forEach(b => {
+    dlg.querySelectorAll('[data-act="veure"]').forEach(b => {
         b.addEventListener("click", () => {
             dlg.close();
             const id = b.dataset.id;
             if (id) carregarAgrupacioDesada(id);
+        });
+    });
+    dlg.querySelectorAll('[data-act="eliminar"]').forEach(b => {
+        b.addEventListener("click", async () => {
+            const id = b.dataset.id;
+            const nom = b.dataset.nom;
+            const cid = b.dataset.cid;
+            if (!id) return;
+            const ok = await window.mostrarConfirmacio({
+                titol: "Eliminar agrupació",
+                missatge: `Eliminar "${nom}"? Les seves càrregues tornaran a estar disponibles per agrupar.`,
+                btnOk: "Sí, elimina-la",
+                btnCancel: "No",
+                tipus: "danger",
+            });
+            if (!ok) return;
+            try {
+                await fetchJson(`/api/agrupacions/${encodeURIComponent(id)}`, { method: "DELETE" });
+                showToast("success", "Agrupació eliminada", nom);
+                // Treu visualment la fila i tanca el modal si era l'última
+                const row = b.closest("li.dup-row");
+                if (row) row.remove();
+                if (!dlg.querySelector("li.dup-row")) {
+                    dlg.close();
+                    showToast("info", "Pots tornar a agrupar", "Totes les agrupacions conflictives s'han eliminat.");
+                }
+            } catch (e) {
+                showToast("error", "Error eliminant", e.message);
+            }
         });
     });
     if (typeof dlg.showModal === "function" && !dlg.open) dlg.showModal();

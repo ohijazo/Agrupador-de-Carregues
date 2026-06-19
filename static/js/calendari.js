@@ -69,10 +69,13 @@
         if (tra.startsWith("AGRI")) return 1;
         const traNorm = tra.normalize("NFD").replace(/[̀-ͯª]/g, "");
         if (traNorm.startsWith("M SOLEDAD LOPEZ")) return 2;
-        if ((Number(c.num_comandes) || 0) === 1 && kgDeCarrega(c) > 17000) return 3;
         const traCodi = (c.tra_codi || "").trim();
-        if (traCodi === "201" || traCodi === "194") return 4;
+        // 199 té preferència sobre la regla d'"alerta capacitat" (>17 t en una
+        // sola comanda): aquest transportista ja gestiona aquest cas com a
+        // habitual i no s'ha de mostrar com a alerta.
         if (traCodi === "199") return 5;
+        if ((Number(c.num_comandes) || 0) === 1 && kgDeCarrega(c) > 17000) return 3;
+        if (traCodi === "201" || traCodi === "194") return 4;
         return 6;
     }
 

@@ -373,7 +373,6 @@
     padding: .5rem .55rem .45rem;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
     position: relative;
     transition: background var(--transition-fast);
 }

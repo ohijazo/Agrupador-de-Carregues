@@ -693,7 +693,7 @@ function crearFilaCarrega(c) {
     tr.insertAdjacentHTML("beforeend", `
         <td><code>${escapeHtml(c.carrega_id)}</code>${badgeAgrupacioHTML(estat)}</td>
         <td class="cell-truncate" title="${escapeHtml(c.car_descripcion)}">${escapeHtml(c.car_descripcion || "—")}</td>
-        <td class="col-data">${escapeHtml(fmtData(c.car_fecsalida || c.car_fecha) || "—")}</td>
+        <td class="col-data">${escapeHtml(((fmtData(c.car_fecsalida || c.car_fecha) || "") + (c.car_fecsalida_hora ? " " + c.car_fecsalida_hora : "")) || "—")}</td>
         <td class="cell-truncate" title="${escapeHtml(c.transportista || c.tra_codi)}">${escapeHtml(c.transportista || c.tra_codi)}</td>
         <td class="cell-truncate" title="${escapeHtml(c.car_matricula)}">${escapeHtml(c.car_matricula)}</td>
         <td class="cell-truncate" title="${escapeHtml(c.car_observaciones)}">${escapeHtml(c.car_observaciones)}</td>
@@ -2014,7 +2014,7 @@ function aplicarPlantilla(plantillaId) {
 const COL_WIDTHS_DEFAULT = {
     "carrega_id": 170,
     "car_descripcion": 180,
-    "car_fecsalida": 110,
+    "car_fecsalida": 145,
     "transportista": 180,
     "car_matricula": 110,
     "car_observaciones": 220,

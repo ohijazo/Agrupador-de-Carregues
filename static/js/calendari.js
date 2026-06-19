@@ -374,7 +374,7 @@
                     <span class="cal-kpi-lbl">${lbl}</span>
                 </div>`;
             stats.innerHTML =
-                card(state.totalsCount, "càrregues", "Càrregues amb data de sortida aquest mes", "📦", "") +
+                card(state.totalsCount, "càrregues", "Càrregues amb data de càrrega aquest mes", "📦", "") +
                 card(formatKgCompact(state.totalsKg), "total", "Suma total de pes (kg/t) aquest mes", "⚖", "") +
                 card(state.totalsSetmana, "aq. setm.", "Càrregues a la setmana actual (dins del mes vist)", "📅", "is-week") +
                 card(state.totalsGranel, "granel", "Càrregues a granel aquest mes", "🌾", "is-granel");
@@ -566,7 +566,7 @@
         const rows = [
             `<div class="cal-tt-titol">${escapeHtml(nom)}</div>`,
             `<div class="cal-tt-id muted"><code>${escapeHtml(c.carrega_id)}</code></div>`,
-            dataTxt ? `<div class="cal-tt-row"><span class="muted">Sortida:</span> ${escapeHtml(dataTxt)}</div>` : "",
+            dataTxt ? `<div class="cal-tt-row"><span class="muted">Data càrrega:</span> ${escapeHtml(dataTxt)}</div>` : "",
             transp ? `<div class="cal-tt-row"><span class="muted">Transportista:</span> ${escapeHtml(transp)}</div>` : "",
             matricula ? `<div class="cal-tt-row"><span class="muted">Matrícula:</span> ${escapeHtml(matricula)}</div>` : "",
             kg > 0 ? `<div class="cal-tt-row"><span class="muted">Pes:</span> <strong>${escapeHtml(fmtKg2.format(kg))} kg</strong></div>` : "",
@@ -697,10 +697,16 @@
         return cs ? cs.c : null;
     }
 
+    function fmtDataLlarga(iso) {
+        if (!iso) return "";
+        const [yy, mm, dd] = String(iso).split("-").map(Number);
+        if (!(yy && mm && dd)) return "";
+        return capitalitzar(fmtDiaLlarg.format(new Date(yy, mm - 1, dd)));
+    }
+
     function renderModalMeta(c) {
-        const data = c.car_fecsalida || c.car_fecha || "";
-        const [yy, mm, dd] = (data || "").split("-").map(Number);
-        const dataTxt = (yy && mm && dd) ? capitalitzar(fmtDiaLlarg.format(new Date(yy, mm - 1, dd))) : "";
+        const dataCarrega = fmtDataLlarga(c.car_fecsalida || c.car_fecha);
+        const dataEntrega = fmtDataLlarga(c.car_fecllegada);
         const transp = (c.transportista || c.tra_codi || "").trim();
         const matricula = (c.car_matricula || "").trim();
         const conductor = (c.car_nomconductor || "").trim();
@@ -708,7 +714,8 @@
         const descripcio = (c.car_descripcion || "").trim();
         const meta = [
             descripcio ? `<div class="cal-modal-meta-row"><strong>${escapeHtml(descripcio)}</strong></div>` : "",
-            dataTxt ? `<div class="cal-modal-meta-row"><span class="muted">Sortida:</span> ${escapeHtml(dataTxt)}</div>` : "",
+            dataCarrega ? `<div class="cal-modal-meta-row"><span class="muted">Data càrrega:</span> ${escapeHtml(dataCarrega)}</div>` : "",
+            dataEntrega ? `<div class="cal-modal-meta-row"><span class="muted">Data entrega:</span> ${escapeHtml(dataEntrega)}</div>` : "",
             transp ? `<div class="cal-modal-meta-row"><span class="muted">Transportista:</span> ${escapeHtml(transp)}</div>` : "",
             matricula ? `<div class="cal-modal-meta-row"><span class="muted">Matrícula:</span> ${escapeHtml(matricula)}</div>` : "",
             conductor ? `<div class="cal-modal-meta-row"><span class="muted">Conductor:</span> ${escapeHtml(conductor)}</div>` : "",

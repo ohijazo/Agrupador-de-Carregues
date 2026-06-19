@@ -589,29 +589,42 @@
         print-color-adjust: exact !important;
     }
 
-    /* --- Lletra molt més gran per a la impressió de l'OFICINA (~75-80%) ---
-       Scope: només #oficina-print (no afecta la impressió del magatzem). --- */
-    #oficina-print.mag-body { font-size: 16pt !important; line-height: 1.35 !important; }
-    #oficina-print .mag-print-title { font-size: 19pt !important; }
-    #oficina-print .mag-print-meta  { font-size: 12pt !important; }
+    /* --- Lletra molt gran per a la impressió de l'OFICINA ---
+       Scope: només #oficina-print (no afecta la impressió del magatzem).
+       Cada càrrega va en una línia pròpia per cabre TOTA la informació
+       (nom · #num · [palets] · sacs), encara que ocupi més pàgines. --- */
+    #oficina-print.mag-body { font-size: 18pt !important; line-height: 1.4 !important; }
+    #oficina-print .mag-print-title { font-size: 22pt !important; }
+    #oficina-print .mag-print-meta  { font-size: 13pt !important; }
 
-    #oficina-print .mag-card { padding: 1.8mm 2mm !important; }
+    #oficina-print .mag-card { padding: 2.5mm 2mm !important; }
 
-    #oficina-print .mag-art-descrip  { font-size: 18pt !important; }
-    #oficina-print .mag-art-codi     { font-size: 13pt !important; }
+    #oficina-print .mag-art-descrip  { font-size: 20pt !important; }
+    #oficina-print .mag-art-codi     { font-size: 14pt !important; }
 
-    #oficina-print .mag-art-sacs-big { font-size: 21pt !important; }
-    #oficina-print .mag-art-sacs-lbl { font-size: 11pt !important; }
-    #oficina-print .mag-art-sacs-kg  { font-size: 13pt !important; }
+    #oficina-print .mag-art-sacs-big { font-size: 23pt !important; }
+    #oficina-print .mag-art-sacs-lbl { font-size: 12pt !important; }
+    #oficina-print .mag-art-sacs-kg  { font-size: 14pt !important; }
 
-    #oficina-print .mag-art-carregues { line-height: 1.4 !important; }
+    /* Cada càrrega en una línia pròpia: més llegible i no s'encavalca */
+    #oficina-print .mag-art-carregues { line-height: 1.45 !important; margin-top: 1mm !important; }
+    #oficina-print .mag-carrega-row {
+        display: block !important;
+        white-space: normal !important;
+        margin: 0 0 0.5mm 0 !important;
+    }
+    #oficina-print .mag-carrega-row::after { content: "" !important; margin: 0 !important; }
     #oficina-print .mag-carrega-row,
     #oficina-print .mag-carrega-row .nom,
-    #oficina-print .mag-carrega-row .detall { font-size: 12pt !important; }
-    #oficina-print .mag-carrega-row .num    { font-size: 13pt !important; }
+    #oficina-print .mag-carrega-row .detall { font-size: 14pt !important; }
+    #oficina-print .mag-carrega-row .num    { font-size: 15pt !important; }
+    #oficina-print .mag-carrega-row .dot {
+        width: 9pt !important;
+        height: 9pt !important;
+    }
 
-    #oficina-print .mag-print-footer        { font-size: 13pt !important; }
-    #oficina-print .mag-print-footer strong { font-size: 13pt !important; }
+    #oficina-print .mag-print-footer        { font-size: 15pt !important; }
+    #oficina-print .mag-print-footer strong { font-size: 15pt !important; }
 }
 
 /* ===== Traçabilitat d'usuari ============================================ */

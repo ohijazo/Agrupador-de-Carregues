@@ -1230,15 +1230,18 @@ function generaImpressioOficina(r) {
     const ordreIdx = new Map();
     r.carregues.forEach((c, i) => ordreIdx.set(c.carrega_id, i));
 
-    // Lletra única per càrrega (A, B, C, ..., Z, AA, AB, ...) — clau per
+    // Símbol geomètric únic per càrrega (●, ■, ▲, ◆, ★, ...) — clau per
     // distingir-les en una impressió B&W on els colors no s'aprecien.
-    function lletraCarrega(i) {
-        let n = i, s = "";
-        do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
-        return s;
-    }
+    // 20 símbols distints; si una agrupació n'usa més, es cicla.
+    const SIMBOLS_CARREGA = [
+        "●", "■", "▲", "◆", "★",
+        "○", "□", "△", "◇", "☆",
+        "▼", "◀", "▶", "⬟", "⬢",
+        "♠", "♣", "♥", "♦", "✚",
+    ];
+    const simbolCarrega = (i) => SIMBOLS_CARREGA[i % SIMBOLS_CARREGA.length];
     const lletraPerCarrega = new Map();
-    r.carregues.forEach((c, i) => lletraPerCarrega.set(c.carrega_id, lletraCarrega(i)));
+    r.carregues.forEach((c, i) => lletraPerCarrega.set(c.carrega_id, simbolCarrega(i)));
 
     // Articles (ordenats com a la taula)
     const prods = productesOrdenats();

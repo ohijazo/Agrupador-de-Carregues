@@ -652,7 +652,7 @@
         margin: 0.4mm 0 !important;
     }
     #oficina-print .mag-pf-c::before {
-        content: "[" attr(data-lletra) "] " !important;
+        content: attr(data-lletra) "  " !important;
         color: #000 !important;
         font-weight: 900 !important;
         margin-right: 0 !important;

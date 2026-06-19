@@ -560,13 +560,13 @@
         const kg = kgDeCarrega(c);
         const transp = (c.transportista || c.tra_codi || "").trim();
         const matricula = (c.car_matricula || "").trim();
-        const data = c.car_fecsalida || c.car_fecha || "";
-        const [yy, mm, dd] = (data || "").split("-").map(Number);
-        const dataTxt = (yy && mm && dd) ? capitalitzar(fmtDiaLlarg.format(new Date(yy, mm - 1, dd))) : "";
+        const dataCarrega = fmtDataLlarga(c.car_fecsalida || c.car_fecha, c.car_fecsalida_hora);
+        const dataEntrega = fmtDataLlarga(c.car_fecllegada, c.car_fecllegada_hora);
         const rows = [
             `<div class="cal-tt-titol">${escapeHtml(nom)}</div>`,
             `<div class="cal-tt-id muted"><code>${escapeHtml(c.carrega_id)}</code></div>`,
-            dataTxt ? `<div class="cal-tt-row"><span class="muted">Data càrrega:</span> ${escapeHtml(dataTxt)}</div>` : "",
+            dataCarrega ? `<div class="cal-tt-row"><span class="muted">Data càrrega:</span> ${escapeHtml(dataCarrega)}</div>` : "",
+            dataEntrega ? `<div class="cal-tt-row"><span class="muted">Data entrega:</span> ${escapeHtml(dataEntrega)}</div>` : "",
             transp ? `<div class="cal-tt-row"><span class="muted">Transportista:</span> ${escapeHtml(transp)}</div>` : "",
             matricula ? `<div class="cal-tt-row"><span class="muted">Matrícula:</span> ${escapeHtml(matricula)}</div>` : "",
             kg > 0 ? `<div class="cal-tt-row"><span class="muted">Pes:</span> <strong>${escapeHtml(fmtKg2.format(kg))} kg</strong></div>` : "",
@@ -697,16 +697,17 @@
         return cs ? cs.c : null;
     }
 
-    function fmtDataLlarga(iso) {
+    function fmtDataLlarga(iso, hora) {
         if (!iso) return "";
         const [yy, mm, dd] = String(iso).split("-").map(Number);
         if (!(yy && mm && dd)) return "";
-        return capitalitzar(fmtDiaLlarg.format(new Date(yy, mm - 1, dd)));
+        const base = capitalitzar(fmtDiaLlarg.format(new Date(yy, mm - 1, dd)));
+        return hora ? `${base}, ${hora}` : base;
     }
 
     function renderModalMeta(c) {
-        const dataCarrega = fmtDataLlarga(c.car_fecsalida || c.car_fecha);
-        const dataEntrega = fmtDataLlarga(c.car_fecllegada);
+        const dataCarrega = fmtDataLlarga(c.car_fecsalida || c.car_fecha, c.car_fecsalida_hora);
+        const dataEntrega = fmtDataLlarga(c.car_fecllegada, c.car_fecllegada_hora);
         const transp = (c.transportista || c.tra_codi || "").trim();
         const matricula = (c.car_matricula || "").trim();
         const conductor = (c.car_nomconductor || "").trim();

@@ -607,20 +607,55 @@
     #oficina-print .mag-art-sacs-kg  { font-size: 14pt !important; }
 
     /* Cada càrrega en una línia pròpia: més llegible i no s'encavalca */
-    #oficina-print .mag-art-carregues { line-height: 1.45 !important; margin-top: 1mm !important; }
+    #oficina-print .mag-art-carregues { line-height: 1.5 !important; margin-top: 1mm !important; }
     #oficina-print .mag-carrega-row {
         display: block !important;
         white-space: normal !important;
-        margin: 0 0 0.5mm 0 !important;
+        margin: 0 0 0.8mm 0 !important;
     }
     #oficina-print .mag-carrega-row::after { content: "" !important; margin: 0 !important; }
     #oficina-print .mag-carrega-row,
     #oficina-print .mag-carrega-row .nom,
     #oficina-print .mag-carrega-row .detall { font-size: 14pt !important; }
     #oficina-print .mag-carrega-row .num    { font-size: 15pt !important; }
+
+    /* Rodó com a "xip" amb lletra: solució B&W (color via background
+       deixa de tenir sentit, així que el reemplacem per identificador
+       textual gran i ben llegible). */
     #oficina-print .mag-carrega-row .dot {
-        width: 9pt !important;
-        height: 9pt !important;
+        width: 7mm !important;
+        height: 7mm !important;
+        line-height: 6.6mm !important;
+        border-radius: 50% !important;
+        border: 1.2pt solid #000 !important;
+        background: #fff !important;
+        color: #000 !important;
+        font-size: 14pt !important;
+        font-weight: 900 !important;
+        text-align: center !important;
+        display: inline-block !important;
+        vertical-align: middle !important;
+        padding: 0 !important;
+        margin: 0 2mm 0 0 !important;
+        font-family: Arial, Helvetica, sans-serif !important;
+    }
+
+    /* Bordes més marcats entre articles per separar productes a primer cop d'ull */
+    #oficina-print .mag-card { border-top: 1.4pt solid #000 !important; }
+    #oficina-print .mag-articles > .mag-card:first-child { border-top: 2pt solid #000 !important; }
+    #oficina-print .mag-articles > .mag-card:last-child  { border-bottom: 2pt solid #000 !important; }
+
+    /* Peu (totals per càrrega) — substitueix el bullet "●" colorit per la
+       lletra entre claudàtors. Cada càrrega va en una línia pròpia. */
+    #oficina-print .mag-pf-row.mag-pf-pes .mag-pf-c {
+        display: block !important;
+        margin: 0.4mm 0 !important;
+    }
+    #oficina-print .mag-pf-c::before {
+        content: "[" attr(data-lletra) "] " !important;
+        color: #000 !important;
+        font-weight: 900 !important;
+        margin-right: 0 !important;
     }
 
     #oficina-print .mag-print-footer        { font-size: 15pt !important; }

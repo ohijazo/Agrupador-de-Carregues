@@ -1230,6 +1230,16 @@ function generaImpressioOficina(r) {
     const ordreIdx = new Map();
     r.carregues.forEach((c, i) => ordreIdx.set(c.carrega_id, i));
 
+    // Lletra única per càrrega (A, B, C, ..., Z, AA, AB, ...) — clau per
+    // distingir-les en una impressió B&W on els colors no s'aprecien.
+    function lletraCarrega(i) {
+        let n = i, s = "";
+        do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
+        return s;
+    }
+    const lletraPerCarrega = new Map();
+    r.carregues.forEach((c, i) => lletraPerCarrega.set(c.carrega_id, lletraCarrega(i)));
+
     // Articles (ordenats com a la taula)
     const prods = productesOrdenats();
     const cardsHtml = prods.map(p => {
@@ -1238,13 +1248,14 @@ function generaImpressioOficina(r) {
         );
         const carregesHtml = pcOrdenats.map(pc => {
             const col = state.colorsCarrega.get(pc.carrega_id) || { color: "#718096" };
+            const lletra = lletraPerCarrega.get(pc.carrega_id) || "·";
             const peces = detallPaletsCarrega(pc);
             const carrega = r.carregues.find(c => c.carrega_id === pc.carrega_id);
             const nomCar = (carrega?.descripcio || pc.carrega_id).trim() || pc.carrega_id;
             const numFinal = String(pc.carrega_id).split("/").pop() || "";
             const numCurt = numFinal.replace(/^0+/, "") || numFinal;
             return `<span class="mag-carrega-row" style="--cb-color:${col.color}">
-                        <span class="dot" aria-hidden="true"></span>
+                        <span class="dot" aria-hidden="true">${escapeHtml(lletra)}</span>
                         <span class="nom">${escapeHtml(nomCar)}</span>
                         <span class="num">#${escapeHtml(numCurt)}</span>
                         <span class="detall">${escapeHtml(peces)} · ${fmtN.format(pc.total_sacs)} sacs</span>
@@ -1278,11 +1289,12 @@ function generaImpressioOficina(r) {
     }
     const pesHtml = (r.carregues || []).map(c => {
         const col = state.colorsCarrega.get(c.carrega_id) || { color: "#000" };
+        const lletra = lletraPerCarrega.get(c.carrega_id) || "·";
         const pes = pesPerCar.get(c.carrega_id) || 0;
         const nomCar = (c.descripcio || c.carrega_id).trim() || c.carrega_id;
         const numFinal = String(c.carrega_id).split("/").pop() || "";
         const numCurt = numFinal.replace(/^0+/, "") || numFinal;
-        return `<span class="mag-pf-c" style="--cb-color:${col.color}">${escapeHtml(nomCar)} #${escapeHtml(numCurt)} · ${fmtKg.format(pes)} kg</span>`;
+        return `<span class="mag-pf-c" style="--cb-color:${col.color}" data-lletra="${escapeHtml(lletra)}">${escapeHtml(nomCar)} #${escapeHtml(numCurt)} · ${fmtKg.format(pes)} kg</span>`;
     }).join(" · ");
     const footerHtml = `
         <footer class="mag-print-footer">

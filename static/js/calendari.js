@@ -76,6 +76,21 @@
         return 6;
     }
 
+    // Excepció: per a càrregues "Agri" / "Mª Soledad López", la data que
+    // determina el dia al calendari és la d'arribada (car_fecllegada), no
+    // la de sortida. La resta segueix amb car_fecsalida.
+    function usaDataArribada(c) {
+        const tra = (c.transportista || "").trim().toUpperCase();
+        if (tra.startsWith("AGRI")) return true;
+        const traNorm = tra.normalize("NFD").replace(/[̀-ͯª]/g, "");
+        return traNorm.startsWith("M SOLEDAD LOPEZ");
+    }
+
+    function dataCalendari(c) {
+        if (usaDataArribada(c) && c.car_fecllegada) return c.car_fecllegada;
+        return c.car_fecsalida;
+    }
+
     function kgDeCarrega(c) {
         const k = Number(c.kg_total) || 0;
         if (k > 0) return k;
@@ -172,8 +187,9 @@
         const perDia = new Map();
         const capSetmana = [];
         for (const c of items) {
-            if (!c.car_fecsalida) continue;
-            const key = String(c.car_fecsalida).slice(0, 10);
+            const d = dataCalendari(c);
+            if (!d) continue;
+            const key = String(d).slice(0, 10);
             const [yy, mm, dd] = key.split("-").map(Number);
             const data = new Date(yy, mm - 1, dd);
             const ws = diaSetmana(data);

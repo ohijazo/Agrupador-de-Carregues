@@ -691,13 +691,13 @@ function crearFilaCarrega(c) {
 
     const estat = estatAgrupacio(c);
     tr.insertAdjacentHTML("beforeend", `
-        <td><code>${escapeHtml(c.carrega_id)}</code>${badgeAgrupacioHTML(estat)}</td>
-        <td class="cell-truncate" title="${escapeHtml(c.car_descripcion)}">${escapeHtml(c.car_descripcion || "—")}</td>
-        <td class="col-data">${escapeHtml(((fmtData(c.car_fecsalida || c.car_fecha) || "") + (c.car_fecsalida_hora ? " " + c.car_fecsalida_hora : "")) || "—")}</td>
-        <td class="cell-truncate" title="${escapeHtml(c.transportista || c.tra_codi)}">${escapeHtml(c.transportista || c.tra_codi)}</td>
-        <td class="cell-truncate" title="${escapeHtml(c.car_matricula)}">${escapeHtml(c.car_matricula)}</td>
-        <td class="cell-truncate" title="${escapeHtml(c.car_observaciones)}">${escapeHtml(c.car_observaciones)}</td>
-        <td class="col-agrupacio">${cellAgrupacioHTML(estat)}</td>
+        <td data-col="carrega_id"><code>${escapeHtml(c.carrega_id)}</code>${badgeAgrupacioHTML(estat)}</td>
+        <td data-col="car_descripcion" class="cell-truncate" title="${escapeHtml(c.car_descripcion)}">${escapeHtml(c.car_descripcion || "—")}</td>
+        <td data-col="car_fecsalida" class="col-data">${escapeHtml(((fmtData(c.car_fecsalida || c.car_fecha) || "") + (c.car_fecsalida_hora ? " " + c.car_fecsalida_hora : "")) || "—")}</td>
+        <td data-col="transportista" class="cell-truncate" title="${escapeHtml(c.transportista || c.tra_codi)}">${escapeHtml(c.transportista || c.tra_codi)}</td>
+        <td data-col="car_matricula" class="cell-truncate" title="${escapeHtml(c.car_matricula)}">${escapeHtml(c.car_matricula)}</td>
+        <td data-col="car_observaciones" class="cell-truncate" title="${escapeHtml(c.car_observaciones)}">${escapeHtml(c.car_observaciones)}</td>
+        <td data-col="agrupacio_nom" class="col-agrupacio">${cellAgrupacioHTML(estat)}</td>
     `);
     return tr;
 }

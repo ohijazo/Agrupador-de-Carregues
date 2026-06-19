@@ -1036,6 +1036,13 @@ body.is-resizing-col * { cursor: col-resize !important; }
     white-space: nowrap;
 }
 
+/* Reducció de tipus en columnes amb noms/text llarg per guanyar espai */
+table td[data-col="car_descripcion"],
+table td[data-col="transportista"],
+table td[data-col="car_observaciones"] {
+    font-size: 0.82rem;
+}
+
 /* --- Skeleton --- */
 .skeleton-row td {
     padding: .75rem;

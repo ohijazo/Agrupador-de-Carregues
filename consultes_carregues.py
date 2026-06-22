@@ -683,7 +683,6 @@ def debug_resolucio_sal(eje: str, sca: str, car: str) -> dict:
                        RTRIM(cp.cli_codi)   AS cli_codi,
                        RTRIM(c.cli_nom)     AS cli_nom,
                        RTRIM(cp.tra_codi)   AS tra_codi,
-                       cp.cpa_data,
                        CASE WHEN EXISTS (
                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
                            WHERE  s.eje_ejercicio    = ?
@@ -709,7 +708,6 @@ def debug_resolucio_sal(eje: str, sca: str, car: str) -> dict:
                     "cli_codi": (r.cli_codi or "").strip(),
                     "cli_nom":  (r.cli_nom  or "").strip(),
                     "tra_codi": (r.tra_codi or "").strip(),
-                    "cpa_data": r.cpa_data.strftime("%Y-%m-%d") if r.cpa_data else None,
                     "match_directe": match_directe,
                     "match_tra": (r.tra_codi or "").strip() == carrega_tra_codi and carrega_tra_codi != "",
                     "via_seriealb": via_seria,

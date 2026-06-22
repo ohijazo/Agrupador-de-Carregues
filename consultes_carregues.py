@@ -77,9 +77,19 @@ def llistar_carregues(
     # acceptem o sal directe o qualsevol sal mapejat via SERIEALB.
     # Resol primer la sal real (via CROSS APPLY amb CPALBARA) per evitar
     # caçar línies d'una comanda d'una altra sèrie amb el mateix número.
-    # PRIORITAT: 1) tra_codi coincideix amb el de la càrrega (la comanda real
-    # és del mateix transportista); 2) match directe (cas freqüent quan la
-    # sèrie del pedido coincideix amb la de la comanda real).
+    # PRIORITAT del CROSS APPLY (mateix patró als 4 llocs del mòdul):
+    # 1) SERIEALB inequívoc: si hi ha EXACTAMENT UN mapping pedido→albarà,
+    #    aquest mapping és definitiu — encara que també existeixi una fila
+    #    CPALBARA amb sal_codigo = sal_pedido (coincidència accidental d'un
+    #    número d'albarà compartit per molts clients).
+    #    Verificat amb NUTREX 2026/02/0000208 (mapping únic 02→52) i
+    #    SIGFREDO 2026/02/0000216 (mapping únic 08→58 amb tra_codi també
+    #    coincident a la fila errònia).
+    # 2) tra_codi coincident: desempata quan SERIEALB té múltiples mappings.
+    #    Verificat amb MATAS 2026/01/0002269 (sal_pedido=01 mapeja a molts;
+    #    cap mapping té tra_codi=154, així que cau al match directe LLAUSAS).
+    # 3) Match directe per sal_codigo: fallback quan no hi ha mapping ni
+    #    tra_codi discriminatiu.
     exists_palletizable_sql = """
         EXISTS (
             SELECT 1
@@ -97,6 +107,19 @@ def llistar_carregues(
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
                 ORDER BY
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                            WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                              AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                              AND  s.sal_codigo       = cp.sal_codigo
+                        ) AND (
+                            SELECT COUNT(*) FROM SERIEALB s WITH (NOLOCK)
+                            WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                              AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                        ) = 1
+                        THEN 0 ELSE 1
+                    END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
@@ -134,10 +157,21 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat (mateix patró que els altres helpers):
-                -- 1) tra_codi coincident amb la càrrega → la comanda real
-                -- 2) sal directe → cas comú quan no hi ha SERIEALB diferencia
+                -- Prioritat: vegeu comentari a `exists_palletizable_sql`.
                 ORDER BY
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                            WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                              AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                              AND  s.sal_codigo       = cp.sal_codigo
+                        ) AND (
+                            SELECT COUNT(*) FROM SERIEALB s WITH (NOLOCK)
+                            WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                              AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                        ) = 1
+                        THEN 0 ELSE 1
+                    END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
@@ -218,10 +252,21 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat (mateix patró que els altres helpers):
-                -- 1) tra_codi coincident amb la càrrega → la comanda real
-                -- 2) sal directe → cas comú quan no hi ha SERIEALB diferencia
+                -- Prioritat: vegeu comentari a `exists_palletizable_sql`.
                 ORDER BY
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                            WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
+                              AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
+                              AND  s.sal_codigo       = cp.sal_codigo
+                        ) AND (
+                            SELECT COUNT(*) FROM SERIEALB s WITH (NOLOCK)
+                            WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
+                              AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
+                        ) = 1
+                        THEN 0 ELSE 1
+                    END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
@@ -521,13 +566,25 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                                AND  s.sal_SerAlbDefPed = d.sal_doc
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat:
-                --   1) tra_codi coincident amb el de la càrrega → la comanda real
-                --      (verificat amb 2026/01/0002269 MATAS tra=154 i
-                --       2026/02/0000208 NUTREX tra=100).
-                --   2) sal directe → cas comú quan la sèrie del pedido
-                --      coincideix amb la sèrie de la comanda real.
+                -- Prioritat: vegeu comentari a `exists_palletizable_sql`
+                -- a `llistar_carregues`. Resum:
+                --   1) SERIEALB inequívoc (un sol mapping) → definitiu.
+                --   2) tra_codi coincident → desempata mappings múltiples (MATAS).
+                --   3) Match directe per sal_codigo → fallback.
                 ORDER BY
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                            WHERE  s.eje_ejercicio    = d.eje_doc
+                              AND  s.sal_SerAlbDefPed = d.sal_doc
+                              AND  s.sal_codigo       = cp.sal_codigo
+                        ) AND (
+                            SELECT COUNT(*) FROM SERIEALB s WITH (NOLOCK)
+                            WHERE  s.eje_ejercicio    = d.eje_doc
+                              AND  s.sal_SerAlbDefPed = d.sal_doc
+                        ) = 1
+                        THEN 0 ELSE 1
+                    END,
                     CASE WHEN RTRIM(cp.tra_codi) = @carrega_tra THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
             ) cp
@@ -771,11 +828,14 @@ def debug_resolucio_sal(eje: str, sca: str, car: str) -> dict:
                 v["kg_total"] = round(v["kg_total"], 2)
 
             # Simula l'ORDER BY actual de resum_carrega/kg_total_sql:
-            #   1) tra_codi coincident amb el de la càrrega
-            #   2) sal_codigo coincident amb sal_doc
+            #   1) SERIEALB inequívoc: via_seriealb=true I el mapping és únic
+            #   2) tra_codi coincident
+            #   3) sal_codigo coincident amb sal_doc
             # Només sobre files que "passen el WHERE".
+            seriealb_unic = len(seriealb_mappings) == 1
             candidats_validos = [c for c in cpalbara_candidats if c["passa_where"]]
             candidats_validos.sort(key=lambda c: (
+                0 if (c["via_seriealb"] and seriealb_unic) else 1,
                 0 if c["match_tra"] else 1,
                 0 if c["match_directe"] else 1,
             ))
@@ -783,12 +843,12 @@ def debug_resolucio_sal(eje: str, sca: str, car: str) -> dict:
             if triat is None:
                 escolliria = {"sal_codigo": None, "rao": "cap candidat passa el WHERE"}
             else:
-                if triat["match_tra"] and triat["match_directe"]:
-                    rao = "tra_codi i sal_codigo coincidents"
+                if triat["via_seriealb"] and seriealb_unic:
+                    rao = "SERIEALB inequívoc (mapping únic, prioritat 1)"
                 elif triat["match_tra"]:
-                    rao = "tra_codi coincident (prioritat 1)"
+                    rao = "tra_codi coincident (prioritat 2)"
                 elif triat["match_directe"]:
-                    rao = "sal_codigo coincident (prioritat 2)"
+                    rao = "sal_codigo coincident (prioritat 3)"
                 else:
                     rao = "primer candidat (cap criteri coincideix)"
                 escolliria = {

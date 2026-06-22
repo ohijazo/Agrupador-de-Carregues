@@ -638,3 +638,191 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
         })
 
     return {"comandes": out_com, "total_sacs": total_sacs, "total_kg": round(total_kg, 2)}
+
+
+# -----------------------------------------------------------------------------
+# DEBUG TEMPORAL: diagnòstic de la resolució de sal_real per a una càrrega.
+# Existeix per investigar casos on el modal mostra client/kg erronis (cas
+# SIGFREDO 2026/02/0000216 ↔ 0000052). Eliminar quan el fix definitiu del
+# bug estigui validat i no en quedin casos nous reportats.
+# -----------------------------------------------------------------------------
+def debug_resolucio_sal(eje: str, sca: str, car: str) -> dict:
+    """Retorna totes les alternatives CPALBARA + SERIEALB + ALBLINIA per a
+    cada comanda d'una càrrega, perquè la persona usuària pugui veure per
+    què `resum_carrega` ha triat una fila concreta i quines opcions hi havia.
+    """
+    comandes = obtenir_comandes_carrega(eje, sca, car)
+
+    conn = connectar()
+    try:
+        car_row = conn.execute(
+            "SELECT RTRIM(c.tra_codi) AS tra_codi, RTRIM(t.tra_nom) AS tra_nom, "
+            "       RTRIM(c.car_descripcion) AS car_descripcion, "
+            "       c.car_pesoteorico, c.car_pesonetocarga, c.car_fecha "
+            "FROM   Cargas c WITH (NOLOCK) "
+            "LEFT JOIN TRANS t WITH (NOLOCK) ON t.tra_codi = c.tra_codi "
+            "WHERE  c.eje_ejercicio=? AND c.sca_serie=? AND c.car_numero=?",
+            eje, sca, car,
+        ).fetchone()
+        if car_row is None:
+            return {"error": "carrega no trobada", "eje": eje, "sca": sca, "car": car}
+        carrega_tra_codi = (car_row.tra_codi or "").strip()
+
+        comandes_out = []
+        for a in comandes:
+            eje_doc = a["eje_ejercicio"]
+            sal_doc = a["sal_codigo"]
+            alb_doc = a["cpa_albara"]
+
+            # Tots els candidats CPALBARA per (eje, alb), sense filtre de sal,
+            # però marcant si la fila passaria el filtre actual del WHERE
+            # (match directe o via SERIEALB).
+            cp_rows = conn.execute(
+                """
+                SELECT RTRIM(cp.sal_codigo) AS sal_codigo,
+                       RTRIM(cp.cli_codi)   AS cli_codi,
+                       RTRIM(c.cli_nom)     AS cli_nom,
+                       RTRIM(cp.tra_codi)   AS tra_codi,
+                       cp.cpa_data,
+                       CASE WHEN EXISTS (
+                           SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                           WHERE  s.eje_ejercicio    = ?
+                             AND  s.sal_SerAlbDefPed = ?
+                             AND  s.sal_codigo       = cp.sal_codigo
+                       ) THEN 1 ELSE 0 END AS via_seriealb
+                FROM   CPALBARA cp WITH (NOLOCK)
+                LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi
+                WHERE  cp.eje_ejercicio = ?
+                  AND  cp.cpa_albara    = ?
+                ORDER  BY cp.sal_codigo
+                """,
+                eje_doc, sal_doc, eje_doc, alb_doc,
+            ).fetchall()
+
+            cpalbara_candidats = []
+            for r in cp_rows:
+                sal_c = (r.sal_codigo or "").strip()
+                match_directe = sal_c == sal_doc
+                via_seria = bool(r.via_seriealb)
+                cpalbara_candidats.append({
+                    "sal_codigo": sal_c,
+                    "cli_codi": (r.cli_codi or "").strip(),
+                    "cli_nom":  (r.cli_nom  or "").strip(),
+                    "tra_codi": (r.tra_codi or "").strip(),
+                    "cpa_data": r.cpa_data.strftime("%Y-%m-%d") if r.cpa_data else None,
+                    "match_directe": match_directe,
+                    "match_tra": (r.tra_codi or "").strip() == carrega_tra_codi and carrega_tra_codi != "",
+                    "via_seriealb": via_seria,
+                    "passa_where": match_directe or via_seria,
+                })
+
+            # Mappings SERIEALB(eje, sal_SerAlbDefPed=sal_doc)
+            sa_rows = conn.execute(
+                "SELECT RTRIM(sal_SerAlbDefPed) AS pedido, RTRIM(sal_codigo) AS sal_codigo "
+                "FROM   SERIEALB WITH (NOLOCK) "
+                "WHERE  eje_ejercicio=? AND sal_SerAlbDefPed=? "
+                "ORDER  BY sal_codigo",
+                eje_doc, sal_doc,
+            ).fetchall()
+            seriealb_mappings = [
+                {"sal_SerAlbDefPed": (r.pedido or "").strip(), "sal_codigo": (r.sal_codigo or "").strip()}
+                for r in sa_rows
+            ]
+
+            # Línies ALBLINIA per (eje, alb) — totes les sales que tenen línies
+            # per a aquest número d'albarà. Agrupades per sal_codigo amb kg
+            # estimat (mateixa fórmula que kg_total_sql).
+            lin_rows = conn.execute(
+                """
+                SELECT RTRIM(l.sal_codigo)  AS sal_codigo,
+                       RTRIM(l.art_codi)    AS art_codi,
+                       RTRIM(a.art_descrip) AS art_descrip,
+                       RTRIM(a.art_descunit) AS tunitat,
+                       l.lin_unit, l.lin_quan
+                FROM   ALBLINIA l WITH (NOLOCK)
+                LEFT JOIN ARTICLES a WITH (NOLOCK) ON a.art_codi = l.art_codi
+                WHERE  l.eje_ejercicio = ?
+                  AND  l.cpa_albara    = ?
+                ORDER  BY l.sal_codigo, l.lin_linia
+                """,
+                eje_doc, alb_doc,
+            ).fetchall()
+            alblinia_per_sal: dict[str, dict] = {}
+            for r in lin_rows:
+                tun = (r.tunitat or "").strip()
+                unit = int(r.lin_unit or 0)
+                quan = float(r.lin_quan or 0)
+                if tun == "GRA":
+                    kg = quan
+                elif tun.startswith("S"):
+                    kg = unit * _pes_per_tunitat(tun)
+                else:
+                    kg = 0.0
+                key = (r.sal_codigo or "").strip()
+                bucket = alblinia_per_sal.setdefault(key, {"linies": [], "kg_total": 0.0})
+                bucket["linies"].append({
+                    "art_codi": (r.art_codi or "").strip(),
+                    "art_descrip": (r.art_descrip or "").strip(),
+                    "tunitat": tun,
+                    "lin_unit": unit,
+                    "lin_quan": quan,
+                    "kg_estimat": round(kg, 2),
+                })
+                bucket["kg_total"] += kg
+            for k, v in alblinia_per_sal.items():
+                v["kg_total"] = round(v["kg_total"], 2)
+
+            # Simula l'ORDER BY actual de resum_carrega/kg_total_sql:
+            #   1) tra_codi coincident amb el de la càrrega
+            #   2) sal_codigo coincident amb sal_doc
+            # Només sobre files que "passen el WHERE".
+            candidats_validos = [c for c in cpalbara_candidats if c["passa_where"]]
+            candidats_validos.sort(key=lambda c: (
+                0 if c["match_tra"] else 1,
+                0 if c["match_directe"] else 1,
+            ))
+            triat = candidats_validos[0] if candidats_validos else None
+            if triat is None:
+                escolliria = {"sal_codigo": None, "rao": "cap candidat passa el WHERE"}
+            else:
+                if triat["match_tra"] and triat["match_directe"]:
+                    rao = "tra_codi i sal_codigo coincidents"
+                elif triat["match_tra"]:
+                    rao = "tra_codi coincident (prioritat 1)"
+                elif triat["match_directe"]:
+                    rao = "sal_codigo coincident (prioritat 2)"
+                else:
+                    rao = "primer candidat (cap criteri coincideix)"
+                escolliria = {
+                    "sal_codigo": triat["sal_codigo"],
+                    "cli_codi": triat["cli_codi"],
+                    "cli_nom": triat["cli_nom"],
+                    "rao": rao,
+                }
+
+            comandes_out.append({
+                "det_documento": f"{eje_doc}{sal_doc}{alb_doc}",
+                "eje_doc": eje_doc,
+                "sal_doc": sal_doc,
+                "alb_doc": alb_doc,
+                "det_tipo": a["det_tipo"],
+                "cpalbara_candidats": cpalbara_candidats,
+                "seriealb_mappings": seriealb_mappings,
+                "alblinia_per_sal": alblinia_per_sal,
+                "escolliria_actualment": escolliria,
+            })
+    finally:
+        conn.close()
+
+    return {
+        "carrega": {
+            "eje": eje, "sca": sca, "car": car,
+            "tra_codi": carrega_tra_codi,
+            "tra_nom": (car_row.tra_nom or "").strip() if car_row.tra_nom else "",
+            "car_descripcion": (car_row.car_descripcion or "").strip() if car_row.car_descripcion else "",
+            "car_pesoteorico": float(car_row.car_pesoteorico) if car_row.car_pesoteorico is not None else 0.0,
+            "car_pesonetocarga": float(car_row.car_pesonetocarga) if car_row.car_pesonetocarga is not None else 0.0,
+            "car_fecha": car_row.car_fecha.strftime("%Y-%m-%d") if car_row.car_fecha else None,
+        },
+        "comandes": comandes_out,
+    }

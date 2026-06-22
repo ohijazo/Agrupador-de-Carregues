@@ -50,8 +50,8 @@ if _PREP_PATH and os.path.isdir(_PREP_PATH) and _PREP_PATH not in sys.path:
 # Imports locals (després del sys.path)
 from agregador import agrupar, serialitzar  # noqa: E402
 from consultes_carregues import (  # noqa: E402
-    cercar_articles, connectar, llistar_carregues, llistar_estats_carregues,
-    llistar_transportistes, resum_carrega,
+    cercar_articles, connectar, debug_resolucio_sal, llistar_carregues,
+    llistar_estats_carregues, llistar_transportistes, resum_carrega,
 )
 from valida import (  # noqa: E402
     valida_codi, valida_int, valida_llista_carregues, valida_rang_dates,
@@ -773,6 +773,30 @@ def api_carrega_detall():
         return _err_db()
     except Exception:
         log.exception("carrega-detall")
+        return _err_genèric()
+
+
+# Endpoint TEMPORAL per diagnosticar la resolució de sal_real (bug del
+# modal del calendari). Eliminar quan el fix definitiu estigui validat.
+@app.route("/api/debug/carrega-sal")
+@auth.requires_rol("admin")
+def api_debug_carrega_sal():
+    eje, err = valida_codi(request.args.get("eje"), "eje", max_len=4)
+    if err:
+        return _err_validacio(err)
+    sca, err = valida_codi(request.args.get("sca"), "sca", max_len=2)
+    if err:
+        return _err_validacio(err)
+    car, err = valida_codi(request.args.get("car"), "car", max_len=7)
+    if err:
+        return _err_validacio(err)
+    try:
+        return jsonify(debug_resolucio_sal(eje, sca, car))
+    except pyodbc.Error:
+        log.exception("DB error a debug/carrega-sal")
+        return _err_db()
+    except Exception:
+        log.exception("debug/carrega-sal")
         return _err_genèric()
 
 

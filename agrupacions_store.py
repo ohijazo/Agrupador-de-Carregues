@@ -84,7 +84,9 @@ def _valida_id(id_: str) -> str:
 # CRUD bàsic
 # ---------------------------------------------------------------------------
 def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = False,
-            created_by_id: int | None = None) -> dict:
+            created_by_id: int | None = None, origen: str = "desada") -> dict:
+    if origen not in ("desada", "impresa"):
+        raise ValueError(f"origen invàlid: {origen!r}")
     id_ = uuid.uuid4().hex
     nom = (nom or "").strip() or f"Agrupació {datetime.now().isoformat(timespec='seconds')}"
     nom = nom[:80]
@@ -101,8 +103,8 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
                 INSERT INTO agrupacions
                     (id, nom, plantilla, n_carregues, n_productes,
                      total_palets_fisics, total_sacs,
-                     carregues, resultat, plantilla_meta, created_by_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     carregues, resultat, plantilla_meta, created_by_id, origen)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING ts
                 """,
                 (
@@ -110,7 +112,7 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
                     total_palets_fisics, total_sacs,
                     json.dumps(carregues), json.dumps(resultat),
                     json.dumps(plantilla_meta) if plantilla_meta else None,
-                    created_by_id,
+                    created_by_id, origen,
                 ),
             )
             ts_row = cur.fetchone()
@@ -130,7 +132,7 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
                 )
             _bump_version(cur)
     audit.log(
-        "agrupacio_desada",
+        "agrupacio_impresa" if origen == "impresa" else "agrupacio_desada",
         target=id_,
         detall={"nom": nom, "plantilla": plantilla, "n_carregues": n_carregues, "n_productes": n_productes},
     )
@@ -143,6 +145,7 @@ def guardar(nom: str, carregues: list[dict], resultat: dict, plantilla: bool = F
         "total_palets_fisics": total_palets_fisics,
         "total_sacs": total_sacs,
         "n_preparats": 0,
+        "origen": origen,
     }
 
 
@@ -176,7 +179,7 @@ def llistar() -> list[dict]:
     return out
 
 
-def llistar_control() -> list[dict]:
+def llistar_control(origen: str | None = None) -> list[dict]:
     """Llistat per a la pantalla /control: agrega inici/fi/durada/preparador.
 
     Estats possibles:
@@ -187,9 +190,16 @@ def llistar_control() -> list[dict]:
 
     Quan és "tancada", fi = finalitzada_manual_at i durada compta des de l'inici
     real del checklist (o és NULL si encara no s'havia començat).
+
+    `origen` (opcional): 'desada' o 'impresa' per filtrar; None retorna totes.
     """
-    sql = """
-        SELECT a.id, a.nom, a.ts, a.n_carregues, a.n_productes,
+    extra_where = ""
+    params: list = []
+    if origen in ("desada", "impresa"):
+        extra_where = " AND a.origen = %s"
+        params.append(origen)
+    sql = f"""
+        SELECT a.id, a.nom, a.ts, a.n_carregues, a.n_productes, a.origen,
                a.finalitzada_manual_at, ufm.nom AS finalitzada_manual_per_nom,
                COALESCE(agg.n_preparats, 0) AS n_preparats,
                uc.nom AS created_by_nom,
@@ -209,11 +219,11 @@ def llistar_control() -> list[dict]:
             WHERE p.agrupacio_id = a.id
         ) agg ON TRUE
         LEFT JOIN usuaris up ON up.id = agg.prep_per_id
-        WHERE a.plantilla = FALSE
+        WHERE a.plantilla = FALSE{extra_where}
         ORDER BY a.ts DESC
     """
     out = []
-    for r in db.fetch_all(sql):
+    for r in db.fetch_all(sql, tuple(params) if params else None):
         n_prod = int(r["n_productes"] or 0)
         n_prep = int(r["n_preparats"] or 0)
         prep_iniciat = r["prep_iniciat"]
@@ -250,6 +260,7 @@ def llistar_control() -> list[dict]:
             "prep_per_nom": r["prep_per_nom"],
             "durada_s": durada_s,
             "estat": estat,
+            "origen": r["origen"],
             "finalitzada_manual_at": _format_ts(fin_manual_at) if fin_manual_at else None,
             "finalitzada_manual_per_nom": r["finalitzada_manual_per_nom"],
         })

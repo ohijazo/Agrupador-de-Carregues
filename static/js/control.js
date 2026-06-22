@@ -51,6 +51,17 @@
         tancada: { txt: "Tancada", cls: "ctrl-badge-tancada" },
     };
 
+    const ORIGEN_MAP = {
+        desada:  { txt: "Desada",  cls: "ctrl-badge-origen-desada",  title: "Desada manualment per l'operari" },
+        impresa: { txt: "Impresa", cls: "ctrl-badge-origen-impresa", title: "Auto-registrada en imprimir sense desar" },
+    };
+
+    function badgeOrigen(it) {
+        const m = ORIGEN_MAP[it.origen];
+        if (!m) return "";
+        return `<span class="ctrl-badge ${m.cls}" title="${escapeM(m.title)}">${escapeM(m.txt)}</span>`;
+    }
+
     function badgeEstat(it) {
         const m = ESTAT_MAP[it.estat] || { txt: it.estat, cls: "" };
         let title = "";
@@ -71,10 +82,12 @@
     }
 
     function filtrar(items) {
+        const origen = $("#ctrl-origen").value;
         const estat = $("#ctrl-estat").value;
         const nomesAvui = $("#ctrl-nomes-avui").checked;
         const today = avuiISO();
         return items.filter((it) => {
+            if (origen && it.origen !== origen) return false;
             if (estat && it.estat !== estat) return false;
             if (nomesAvui && !(it.ts || "").startsWith(today)) return false;
             return true;
@@ -108,6 +121,7 @@
         tbody.innerHTML = items.map((it) => {
             const progres = `${it.n_preparats || 0} / ${it.n_productes || 0}`;
             return `<tr>
+                <td>${badgeOrigen(it)}</td>
                 <td><a href="/magatzem/${encodeURIComponent(it.id)}" class="ctrl-nom">${escapeM(it.nom)}</a></td>
                 <td>${escapeM(fmtData(it.ts))}</td>
                 <td>${escapeM(it.created_by_nom || "—")}</td>
@@ -193,6 +207,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
+        $("#ctrl-origen").addEventListener("change", pinta);
         $("#ctrl-estat").addEventListener("change", pinta);
         $("#ctrl-nomes-avui").addEventListener("change", pinta);
         $("#ctrl-tbody").addEventListener("click", (ev) => {

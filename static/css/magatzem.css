@@ -797,6 +797,8 @@
 .ctrl-badge-en-curs { background: #dbeafe; color: #1e40af; }
 .ctrl-badge-acabada { background: #d1fae5; color: #065f46; }
 .ctrl-badge-tancada { background: #fed7aa; color: #9a3412; cursor: help; }
+.ctrl-badge-origen-desada  { background: #e0e7ff; color: #3730a3; cursor: help; }
+.ctrl-badge-origen-impresa { background: #f3e8ff; color: #6b21a8; cursor: help; }
 
 .ctrl-actions {
     display: flex;

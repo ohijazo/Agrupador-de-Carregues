@@ -1400,8 +1400,32 @@ function generaImpressioOficina(r) {
     return `${headerHtml}<ul class="mag-articles">${cardsHtml}</ul>${footerHtml}`;
 }
 
-function imprimirInforme() {
+async function imprimirInforme() {
     if (!state.resultat) return;
+
+    // Registra la impressió en segon pla: si l'operari no ha desat manualment,
+    // l'agrupació queda persistida amb origen='impresa' i és consultable a
+    // /control. Si ja hi havia un id (desat manual previ), només audit log.
+    // Cap error de traçabilitat no ha de bloquejar la impressió real.
+    try {
+        const carregues = state.carregues.filter(c => state.seleccio.has(c.carrega_id));
+        const data = await fetchJson("/api/agrupacions/imprimir", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                carregues,
+                resultat: state.resultat,
+                agrupacio_existent_id: state.agrupacioActualId || null,
+            }),
+        });
+        if (data && data.creada && data.id) {
+            state.agrupacioActualId = data.id;
+            actualitzarBotoMagatzem();
+        }
+    } catch (e) {
+        console.warn("No s'ha pogut registrar la impressió:", e && e.message);
+    }
+
     omplirCapçaleraPrint();
 
     // Injecta el contenidor d'impressió amb el layout del magatzem

@@ -12,7 +12,7 @@ import secrets
 import sys
 import time
 from collections import defaultdict, deque
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from threading import Lock
 
@@ -82,6 +82,7 @@ app.config.update(
 )
 
 # Import després de configurar `app` per evitar imports circulars amb auth.py
+import audit  # noqa: E402
 import auth  # noqa: E402
 
 
@@ -624,8 +625,11 @@ def api_agrupacions_llista():
 @app.route("/api/control/agrupacions", methods=["GET"])
 @auth.requires_rol("admin", "oficina")
 def api_control_agrupacions():
+    origen = request.args.get("origen")
+    if origen and origen not in ("desada", "impresa"):
+        return _err_validacio("'origen' ha de ser 'desada' o 'impresa'.")
     try:
-        return jsonify(agrupacions_store.llistar_control())
+        return jsonify(agrupacions_store.llistar_control(origen=origen))
     except Exception:
         log.exception("control llistar")
         return _err_genèric()
@@ -660,6 +664,60 @@ def api_agrupacions_guardar():
         return jsonify(info)
     except Exception:
         log.exception("agrupacions guardar")
+        return _err_genèric()
+
+
+@app.route("/api/agrupacions/imprimir", methods=["POST"])
+@auth.requires_rol("admin", "oficina")
+def api_agrupacions_imprimir():
+    """Registra una impressió. Si `agrupacio_existent_id` ve i és vàlid (l'operari
+    ja havia desat manualment), només deixa audit log sense duplicar. Si no,
+    crea un registre nou a `agrupacions` amb `origen='impresa'` i nom auto.
+    """
+    body = request.get_json(silent=True) or {}
+    existent_id = (body.get("agrupacio_existent_id") or "").strip() or None
+    carregues, err = valida_llista_carregues(body.get("carregues"))
+    if err:
+        return _err_validacio(err)
+    resultat = body.get("resultat")
+    if not isinstance(resultat, dict):
+        return _err_validacio("'resultat' és obligatori.")
+
+    user_id = session.get("user_id")
+    user_nom = (session.get("user_name") or "").strip()
+
+    if existent_id:
+        # Reimpressió d'una agrupació ja desada: només audit log
+        try:
+            audit.log(
+                "agrupacio_impresa",
+                target=existent_id,
+                detall={
+                    "n_carregues": len(carregues),
+                    "reimpressio_sobre_desada": True,
+                },
+            )
+            return jsonify({"id": existent_id, "creada": False})
+        except Exception:
+            log.exception("agrupacions imprimir (existent)")
+            return _err_genèric()
+
+    # Impressió fresh: crea registre nou amb origen='impresa'
+    nom_auto = f"Imprès {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} — {user_nom}"[:80]
+    try:
+        info = agrupacions_store.guardar(
+            nom_auto, carregues, resultat,
+            plantilla=False,
+            created_by_id=user_id,
+            origen="impresa",
+        )
+        log.info(
+            "audit imprimir agrupacio=%s nom=%s ip=%s n_carregues=%d",
+            info.get("id"), info.get("nom"), request.remote_addr, info.get("n_carregues", 0),
+        )
+        return jsonify({**info, "creada": True})
+    except Exception:
+        log.exception("agrupacions imprimir (nova)")
         return _err_genèric()
 
 

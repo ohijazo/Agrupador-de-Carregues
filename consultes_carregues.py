@@ -121,12 +121,8 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
-                    CASE WHEN EXISTS (
-                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                        WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                          AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                          AND  s.sal_codigo       = cp.sal_codigo
-                    ) THEN 0 ELSE 1 END,
+                    COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
+                                          COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
                     CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
@@ -179,12 +175,8 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
-                    CASE WHEN EXISTS (
-                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                        WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                          AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                          AND  s.sal_codigo       = cp.sal_codigo
-                    ) THEN 0 ELSE 1 END,
+                    COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
+                                          COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
                     CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
@@ -296,12 +288,8 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
-                    CASE WHEN EXISTS (
-                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                        WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
-                          AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
-                          AND  s.sal_codigo       = cp.sal_codigo
-                    ) THEN 0 ELSE 1 END,
+                    COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
+                                          COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
                     CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
@@ -560,14 +548,19 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
 
     conn = connectar()
     try:
-        # Obté el tra_codi de la càrrega — clau per a discriminar el sal_real
-        # quan hi ha múltiples candidats a CPALBARA amb el mateix número.
+        # Obté el tra_codi i les dates de la càrrega — claus per a discriminar
+        # el sal_real quan hi ha múltiples candidats a CPALBARA amb el mateix
+        # número. La data de referència (car_fecllegada → car_fecsalida →
+        # car_fecha) es compara amb cpa_fechaservir de cada candidat.
         tra_row = conn.execute(
-            "SELECT RTRIM(tra_codi) AS tra_codi FROM Cargas WITH (NOLOCK) "
+            "SELECT RTRIM(tra_codi) AS tra_codi, "
+            "       COALESCE(car_fecllegada, car_fecsalida, car_fecha) AS data_ref "
+            "FROM Cargas WITH (NOLOCK) "
             "WHERE eje_ejercicio=? AND sca_serie=? AND car_numero=?",
             eje, sca, car,
         ).fetchone()
         carrega_tra_codi = (tra_row.tra_codi if tra_row else "") or ""
+        carrega_data_ref = tra_row.data_ref if tra_row else None
 
         # Pas 1: resoldre la sèrie real (sal_real) per a cada comanda.
         # Detcargas codifica la sèrie del PEDIDO (sal_SerAlbDefPed); la comanda
@@ -579,12 +572,13 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
         #   2) sal directe (cas freqüent quan no hi ha mapping a SERIEALB).
         claus_doc = [(a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]) for a in comandes]
         values_sql = ",".join(["(CAST(? AS varchar(4)), CAST(? AS varchar(2)), CAST(? AS varchar(7)))"] * len(claus_doc))
-        params_resolve: list = [carrega_tra_codi]  # primer param: tra_codi
+        params_resolve: list = [carrega_tra_codi, carrega_data_ref]  # tra_codi, data_ref
         for k in claus_doc:
             params_resolve.extend(k)
 
         sql_resolve = f"""
             DECLARE @carrega_tra varchar(5) = RTRIM(?);
+            DECLARE @carrega_data datetime  = ?;
             SELECT d.eje_doc, d.sal_doc, d.alb_doc,
                    RTRIM(cp.sal_codigo) AS sal_real,
                    RTRIM(cp.cli_codi)   AS cli_codi,
@@ -604,13 +598,13 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                                AND  s.sal_SerAlbDefPed = d.sal_doc
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat: vegeu comentari a `exists_palletizable_sql`
-                -- a `llistar_carregues`. Resum:
+                -- Prioritat (vegeu també `exists_palletizable_sql`):
                 --   1) SERIEALB inequívoc (un sol mapping) → definitiu.
                 --   2) tra_codi coincident → desempata mappings múltiples (MATAS).
-                --   3) Via SERIEALB (no-directe) → quan ambdós casen tra+estat,
-                --      l'albara real és sempre el resultat de la traducció SERIEALB;
-                --      el directe pending sol ser un residu (cas RYMOT, URBAN SPICES).
+                --   3) Proximitat de cpa_fechaservir a la data de referència de
+                --      la càrrega (car_fecllegada → car_fecsalida → car_fecha)
+                --      → discrimina entre dos pending del mateix tra (cas
+                --      0002389/0002423 amb cpa_albara=0004487 compartit).
                 --   4) Match directe per sal_codigo → fallback final.
                 ORDER BY
                     CASE
@@ -627,12 +621,7 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = @carrega_tra THEN 0 ELSE 1 END,
-                    CASE WHEN EXISTS (
-                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                        WHERE  s.eje_ejercicio    = d.eje_doc
-                          AND  s.sal_SerAlbDefPed = d.sal_doc
-                          AND  s.sal_codigo       = cp.sal_codigo
-                    ) THEN 0 ELSE 1 END,
+                    COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir, @carrega_data)), 999999),
                     CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
             ) cp
             LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi

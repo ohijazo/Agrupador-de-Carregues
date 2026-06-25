@@ -93,6 +93,7 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                     res = calcular_embalatges(
                         a["sal_codigo"], a["cpa_albara"],
                         tra_codi_carrega=tra_codi,
+                        eje_ejercicio=a["eje_ejercicio"],
                     )
                     cache_comanda[key] = res
             except Exception as e:

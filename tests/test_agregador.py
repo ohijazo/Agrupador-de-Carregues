@@ -94,7 +94,7 @@ def _carrega(cid="2026/01/0000001", tra="TR1"):
 def test_agrupar_amb_resultat_normal():
     """Una comanda torna 1 palet → resultat amb 1 producte i 1 palet físic."""
     fake_motor = _setup_fake_motor()
-    fake_motor.calcular_embalatges = lambda sal, cpa: FakeResultat(
+    fake_motor.calcular_embalatges = lambda sal, cpa, **kw: FakeResultat(
         embalatges=[FakeEmbalatge(contingut=[FakeContingut("ART1", "Article test", sacs=10, sacs_x_base=5)])],
         linies=[FakeLinia("ART1", "Article test", "S25")],
         palets=[FakePaletResum("01030", "Palet test")],
@@ -114,7 +114,7 @@ def test_agrupar_amb_resultat_normal():
 def test_agrupar_motor_torna_none_no_peta():
     """Si calcular_embalatges retorna None, registra incidència i continua."""
     fake_motor = _setup_fake_motor()
-    fake_motor.calcular_embalatges = lambda sal, cpa: None
+    fake_motor.calcular_embalatges = lambda sal, cpa, **kw: None
     with patch("agregador.obtenir_comandes_carrega", return_value=[
         {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
     ]):
@@ -128,7 +128,7 @@ def test_agrupar_motor_torna_none_no_peta():
 def test_agrupar_motor_peta_amb_excepcio():
     """Excepció del motor → incidència 'error' i no peta tot el lot."""
     fake_motor = _setup_fake_motor()
-    def boom(sal, cpa):
+    def boom(sal, cpa, **kw):
         raise RuntimeError("BD timeout")
     fake_motor.calcular_embalatges = boom
     with patch("agregador.obtenir_comandes_carrega", return_value=[
@@ -156,7 +156,7 @@ def test_agrupar_carrega_sense_comandes():
 def test_agrupar_motor_torna_embalatges_buit():
     """Motor OK però sense embalatges → incidència warning."""
     fake_motor = _setup_fake_motor()
-    fake_motor.calcular_embalatges = lambda sal, cpa: FakeResultat(embalatges=[])
+    fake_motor.calcular_embalatges = lambda sal, cpa, **kw: FakeResultat(embalatges=[])
     with patch("agregador.obtenir_comandes_carrega", return_value=[
         {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
     ]):
@@ -171,7 +171,7 @@ def test_agrupar_cache_comanda_reutilitza_resultat():
     """La mateixa comanda compartida per 2 càrregues només es calcula 1 vegada."""
     fake_motor = _setup_fake_motor()
     crides = []
-    def comptar(sal, cpa):
+    def comptar(sal, cpa, **kw):
         crides.append((sal, cpa))
         return FakeResultat(
             embalatges=[FakeEmbalatge(contingut=[FakeContingut("ART1", sacs=5, sacs_x_base=5)])],

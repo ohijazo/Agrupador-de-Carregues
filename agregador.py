@@ -41,8 +41,8 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
 
     resultat = ResultatAgrupacio()
 
-    # Cache de comandes (eje, sal, cpa) per evitar recalcular si surt 2 cops.
-    cache_comanda: dict[tuple[str, str, str], object] = {}
+    # Cache de comandes (eje, sal, cpa, tra) per evitar recalcular si surt 2 cops.
+    cache_comanda: dict[tuple[str, str, str, str], object] = {}
 
     # Estructura intermèdia: (art_codi) -> {
     #     "descrip", "tunitat",
@@ -81,12 +81,19 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
             continue
 
         for a in comandes:
-            key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"])
+            tra_codi = c.get("tra_codi", "") or ""
+            # `tra_codi` forma part de la clau de cache: dues càrregues amb
+            # tra_codi diferents poden resoldre la mateixa (eje, sal, alb) a
+            # albarans diferents quan SERIEALB té mappings múltiples.
+            key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"], tra_codi)
             try:
                 if key in cache_comanda:
                     res = cache_comanda[key]
                 else:
-                    res = calcular_embalatges(a["sal_codigo"], a["cpa_albara"])
+                    res = calcular_embalatges(
+                        a["sal_codigo"], a["cpa_albara"],
+                        tra_codi_carrega=tra_codi,
+                    )
                     cache_comanda[key] = res
             except Exception as e:
                 resultat.incidencies.append(Incidencia(

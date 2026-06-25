@@ -88,8 +88,31 @@ def llistar_carregues(
     # 2) tra_codi coincident: desempata quan SERIEALB té múltiples mappings.
     #    Verificat amb MATAS 2026/01/0002269 (sal_pedido=01 mapeja a molts;
     #    cap mapping té tra_codi=154, així que cau al match directe LLAUSAS).
-    # 3) Match directe per sal_codigo: fallback quan no hi ha mapping ni
-    #    tra_codi discriminatiu.
+    # 3) Coherència de dades de l'albarà: si alguna ALBLINIA té lin_unit*pes_per_sac
+    #    molt diferent de lin_quan (>50% de divergència, p.ex. cas 0002430 sal=56
+    #    amb 3501 sacs i lin_quan=8697 → 87525 vs 8697, 10x), és símptoma de
+    #    captura corrupta a KAIS. Despriorititzem aquests candidats.
+    # 4) Proximitat de cpa_fechaservir a la data de la càrrega.
+    # 5) Match directe per sal_codigo: fallback quan res anterior discrimina.
+
+    # Fragment SQL reutilitzable: 0 si totes les línies són coherents, 1 si en
+    # té alguna de corrupta. Cal definir-lo aquí perquè s'usa als 4 ORDER BY.
+    linies_corruptes_sql = """
+        CASE WHEN EXISTS (
+            SELECT 1
+            FROM ALBLINIA l2 WITH (NOLOCK)
+            JOIN ARTICLES a2 WITH (NOLOCK) ON a2.art_codi = l2.art_codi
+            WHERE l2.eje_ejercicio = cp.eje_ejercicio
+              AND l2.sal_codigo    = cp.sal_codigo
+              AND l2.cpa_albara    = cp.cpa_albara
+              AND LEFT(RTRIM(a2.art_descunit), 1) = 'S'
+              AND TRY_CAST(SUBSTRING(RTRIM(a2.art_descunit), 2, 10) AS FLOAT) IS NOT NULL
+              AND l2.lin_unit > 0
+              AND l2.lin_quan > 0
+              AND ABS(l2.lin_unit * TRY_CAST(SUBSTRING(RTRIM(a2.art_descunit), 2, 10) AS FLOAT) - l2.lin_quan)
+                    > l2.lin_quan * 0.5
+        ) THEN 1 ELSE 0 END
+    """
     exists_palletizable_sql = """
         EXISTS (
             SELECT 1
@@ -121,6 +144,7 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    """ + linies_corruptes_sql + """,
                     COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
                                           COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
                     CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
@@ -175,6 +199,7 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    """ + linies_corruptes_sql + """,
                     COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
                                           COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
                     CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
@@ -295,6 +320,7 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    """ + linies_corruptes_sql + """,
                     COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
                                           COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
                     CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END
@@ -607,11 +633,15 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                 -- Prioritat (vegeu també `exists_palletizable_sql`):
                 --   1) SERIEALB inequívoc (un sol mapping) → definitiu.
                 --   2) tra_codi coincident → desempata mappings múltiples (MATAS).
-                --   3) Proximitat de cpa_fechaservir a la data de referència de
+                --   3) Coherència de línies (lin_unit*pes_per_sac vs lin_quan):
+                --      despriorititza albarans amb dades corruptes (cas 0002430
+                --      sal=56 amb 3501 sacs i lin_quan=8697 → ratio 2.48 vs 25
+                --      esperat).
+                --   4) Proximitat de cpa_fechaservir a la data de referència de
                 --      la càrrega (car_fecllegada → car_fecsalida → car_fecha)
                 --      → discrimina entre dos pending del mateix tra (cas
                 --      0002389/0002423 amb cpa_albara=0004487 compartit).
-                --   4) Match directe per sal_codigo → fallback final.
+                --   5) Match directe per sal_codigo → fallback final.
                 ORDER BY
                     CASE
                         WHEN EXISTS (
@@ -627,6 +657,20 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = @carrega_tra THEN 0 ELSE 1 END,
+                    CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM ALBLINIA l2 WITH (NOLOCK)
+                        JOIN ARTICLES a2 WITH (NOLOCK) ON a2.art_codi = l2.art_codi
+                        WHERE l2.eje_ejercicio = cp.eje_ejercicio
+                          AND l2.sal_codigo    = cp.sal_codigo
+                          AND l2.cpa_albara    = cp.cpa_albara
+                          AND LEFT(RTRIM(a2.art_descunit), 1) = 'S'
+                          AND TRY_CAST(SUBSTRING(RTRIM(a2.art_descunit), 2, 10) AS FLOAT) IS NOT NULL
+                          AND l2.lin_unit > 0
+                          AND l2.lin_quan > 0
+                          AND ABS(l2.lin_unit * TRY_CAST(SUBSTRING(RTRIM(a2.art_descunit), 2, 10) AS FLOAT) - l2.lin_quan)
+                                > l2.lin_quan * 0.5
+                    ) THEN 1 ELSE 0 END,
                     COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir, @carrega_data)), 999999),
                     CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
             ) cp

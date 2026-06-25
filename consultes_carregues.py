@@ -121,6 +121,12 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                        WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                          AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                          AND  s.sal_codigo       = cp.sal_codigo
+                    ) THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
@@ -173,6 +179,12 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                        WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
+                          AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
+                          AND  s.sal_codigo       = cp.sal_codigo
+                    ) THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
@@ -284,6 +296,12 @@ def llistar_carregues(
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                        WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
+                          AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
+                          AND  s.sal_codigo       = cp.sal_codigo
+                    ) THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
@@ -590,7 +608,10 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                 -- a `llistar_carregues`. Resum:
                 --   1) SERIEALB inequívoc (un sol mapping) → definitiu.
                 --   2) tra_codi coincident → desempata mappings múltiples (MATAS).
-                --   3) Match directe per sal_codigo → fallback.
+                --   3) Via SERIEALB (no-directe) → quan ambdós casen tra+estat,
+                --      l'albara real és sempre el resultat de la traducció SERIEALB;
+                --      el directe pending sol ser un residu (cas RYMOT, URBAN SPICES).
+                --   4) Match directe per sal_codigo → fallback final.
                 ORDER BY
                     CASE
                         WHEN EXISTS (
@@ -606,6 +627,12 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                         THEN 0 ELSE 1
                     END,
                     CASE WHEN RTRIM(cp.tra_codi) = @carrega_tra THEN 0 ELSE 1 END,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                        WHERE  s.eje_ejercicio    = d.eje_doc
+                          AND  s.sal_SerAlbDefPed = d.sal_doc
+                          AND  s.sal_codigo       = cp.sal_codigo
+                    ) THEN 0 ELSE 1 END,
                     CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
             ) cp
             LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi

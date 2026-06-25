@@ -238,11 +238,15 @@ def llistar_carregues(
         """
         where_params.append(art_codi)
 
-    # Suma de kg per càrrega. Dues fonts de pes:
+    # Suma de kg per càrrega. Tres fonts de pes (mateixa fórmula que KAIS usa
+    # a les ordres de càrrega imprimibles, perquè els totals coincideixin):
     #   - Sacs (tunitat Sxx): kg = lin_unit × pes per sac (S25 → 25, ...)
     #   - Granel (tunitat 'GRA'): kg = lin_quan (lin_unit és 0; el pes està al
     #     camp `lin_quan` directament en kg).
-    #   - 'UNI' (palets, peces…): no compten kg.
+    #   - 'UNI' (palets, peces…): kg = lin_quan. KAIS compta 1 kg per palet
+    #     com a unitat lògica al sumari, no el pes físic real (que seria
+    #     ~10-25 kg per palet); reproduïm aquesta convenció per consistència
+    #     amb el PDF de l'ordre de càrrega.
     # IMPORTANT: per a cada det_documento resolem una sola `sal` real (via
     # CPALBARA, amb fallback a SERIEALB) ABANS d'agregar amb ALBLINIA. Si
     # juntem "sal directe OR sal via SERIEALB" al JOIN, comptaríem doble quan
@@ -251,12 +255,10 @@ def llistar_carregues(
         ISNULL((
             SELECT SUM(
                 CASE
-                    WHEN RTRIM(a.art_descunit) = 'GRA'
-                    THEN l.lin_quan
                     WHEN LEFT(RTRIM(a.art_descunit), 1) = 'S'
                          AND TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT) IS NOT NULL
                     THEN l.lin_unit * TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT)
-                    ELSE 0
+                    ELSE l.lin_quan
                 END
             )
             FROM   Detcargas d2  WITH (NOLOCK)
@@ -301,7 +303,6 @@ def llistar_carregues(
               AND  d2.sca_serie     = c.sca_serie
               AND  d2.car_numero    = c.car_numero
               AND  d2.det_tipo      IN ('A', 'P')
-              AND  RTRIM(a.art_descunit) <> 'UNI'
               AND  ( l.lin_unit > 0 OR l.lin_quan > 0 )
         ), 0)
     """
@@ -674,22 +675,22 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
 
     # Agrupar TOTES les línies per comanda; marquem cada una amb `palletitzable`
     # (palletitzable = tunitat != UNI/GRA i sacs > 0, mateixes regles que el motor).
-    # Per al càlcul de kg:
+    # Per al càlcul de kg (alineat amb el sumari de l'ordre de càrrega de KAIS):
     #   - tunitat Sxx (sacs): kg = sacs × pes_per_tunitat (S25 → 25, ...)
     #   - tunitat 'GRA' (granel): kg = lin_quan (pes directe en kg)
-    #   - 'UNI' o desconegut: kg = 0
+    #   - 'UNI' (palets, peces): kg = lin_quan (KAIS sumarítza 1 kg per palet
+    #     com a unitat lògica al PDF, no el pes físic real).
     linies_per_comanda: dict[tuple[str, str, str], list[dict]] = {}
     for r in lin_rows:
         tun = (r.tunitat or "").strip()
         sacs = int(r.sacs or 0)
         quan = float(r.quan or 0)
         palletitzable = tun not in ("UNI", "GRA") and sacs > 0
-        if tun == "GRA":
-            kg = quan
-        elif palletitzable:
+        if palletitzable:
             kg = sacs * _pes_per_tunitat(tun)
         else:
-            kg = 0.0
+            # GRA, UNI, o qualsevol altre → kg ve de lin_quan
+            kg = quan
         key = (r.eje_ejercicio, r.sal_codigo.strip(), r.cpa_albara.strip())
         linies_per_comanda.setdefault(key, []).append({
             "art_codi": r.art_codi.strip() if r.art_codi else "",
@@ -729,6 +730,13 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
             "total_kg": round(a_kg, 2),
             "linies": linies,
         })
+
+    # Ordenar per ciutat de destí (mateixa convenció que les ordres de càrrega
+    # de KAIS, que llisten les comandes alfabèticament per `pobla`). Les
+    # comandes sense `pobla` van al final per no descol·locar el llistat.
+    out_com.sort(key=lambda c: (1 if not (c.get("pobla") or "") else 0,
+                                (c.get("pobla") or "").upper(),
+                                (c.get("cli_nom") or "").upper()))
 
     return {"comandes": out_com, "total_sacs": total_sacs, "total_kg": round(total_kg, 2)}
 

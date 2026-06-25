@@ -238,15 +238,19 @@ def llistar_carregues(
         """
         where_params.append(art_codi)
 
-    # Suma de kg per càrrega. Tres fonts de pes (mateixa fórmula que KAIS usa
-    # a les ordres de càrrega imprimibles, perquè els totals coincideixin):
-    #   - Sacs (tunitat Sxx): kg = lin_unit × pes per sac (S25 → 25, ...)
-    #   - Granel (tunitat 'GRA'): kg = lin_quan (lin_unit és 0; el pes està al
-    #     camp `lin_quan` directament en kg).
-    #   - 'UNI' (palets, peces…): kg = lin_quan. KAIS compta 1 kg per palet
-    #     com a unitat lògica al sumari, no el pes físic real (que seria
-    #     ~10-25 kg per palet); reproduïm aquesta convenció per consistència
-    #     amb el PDF de l'ordre de càrrega.
+    # Suma de kg per càrrega — fórmula alineada amb com KAIS imprimeix la
+    # columna "Cantidad" de l'ordre de càrrega:
+    #   - Per a totes les unitats (Sxx, GRA, UNI…), el "Cantidad" és `lin_quan`.
+    #   - Per a Sxx, KAIS sol omplir `lin_quan` = `lin_unit × pes_per_sac`,
+    #     però hi ha casos d'articles a granel servits en sacs (ex.: 30000
+    #     FARINA) on `lin_quan` és el pes real i no equival exactament a
+    #     sacs × 25. Si fem `lin_unit × pes_per_sac` ignorem aquest detall i
+    #     podem amplificar errors de captura (cas 2026/01/0002430 0000274
+    #     sal=56: lin_unit=3501, lin_quan=8697 → 87525 kg en comptes de
+    #     ~8697 kg).
+    #   - Per tant: si `lin_quan > 0` el fem servir directament (és la font
+    #     de veritat de KAIS); altrament caiem a `lin_unit × pes_per_sac` com
+    #     a fallback per a línies amb només sacs.
     # IMPORTANT: per a cada det_documento resolem una sola `sal` real (via
     # CPALBARA, amb fallback a SERIEALB) ABANS d'agregar amb ALBLINIA. Si
     # juntem "sal directe OR sal via SERIEALB" al JOIN, comptaríem doble quan
@@ -255,10 +259,11 @@ def llistar_carregues(
         ISNULL((
             SELECT SUM(
                 CASE
+                    WHEN l.lin_quan > 0 THEN l.lin_quan
                     WHEN LEFT(RTRIM(a.art_descunit), 1) = 'S'
                          AND TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT) IS NOT NULL
                     THEN l.lin_unit * TRY_CAST(SUBSTRING(RTRIM(a.art_descunit), 2, 10) AS FLOAT)
-                    ELSE l.lin_quan
+                    ELSE 0
                 END
             )
             FROM   Detcargas d2  WITH (NOLOCK)
@@ -675,22 +680,22 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
 
     # Agrupar TOTES les línies per comanda; marquem cada una amb `palletitzable`
     # (palletitzable = tunitat != UNI/GRA i sacs > 0, mateixes regles que el motor).
-    # Per al càlcul de kg (alineat amb el sumari de l'ordre de càrrega de KAIS):
-    #   - tunitat Sxx (sacs): kg = sacs × pes_per_tunitat (S25 → 25, ...)
-    #   - tunitat 'GRA' (granel): kg = lin_quan (pes directe en kg)
-    #   - 'UNI' (palets, peces): kg = lin_quan (KAIS sumarítza 1 kg per palet
-    #     com a unitat lògica al PDF, no el pes físic real).
+    # Per al càlcul de kg: KAIS imprimeix la columna "Cantidad" (= lin_quan) com a
+    # font de veritat per a totes les unitats. Sols caiem a `sacs × pes_per_sac`
+    # si lin_quan no està informat (cas rar). Veure el comentari extens a
+    # `kg_total_sql` per al motiu (cas 0002430 0000274 sal=56 amb dades errònies).
     linies_per_comanda: dict[tuple[str, str, str], list[dict]] = {}
     for r in lin_rows:
         tun = (r.tunitat or "").strip()
         sacs = int(r.sacs or 0)
         quan = float(r.quan or 0)
         palletitzable = tun not in ("UNI", "GRA") and sacs > 0
-        if palletitzable:
+        if quan > 0:
+            kg = quan
+        elif palletitzable:
             kg = sacs * _pes_per_tunitat(tun)
         else:
-            # GRA, UNI, o qualsevol altre → kg ve de lin_quan
-            kg = quan
+            kg = 0.0
         key = (r.eje_ejercicio, r.sal_codigo.strip(), r.cpa_albara.strip())
         linies_per_comanda.setdefault(key, []).append({
             "art_codi": r.art_codi.strip() if r.art_codi else "",

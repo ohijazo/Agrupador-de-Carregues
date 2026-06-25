@@ -188,11 +188,27 @@ def llistar_carregues(
               AND  l.lin_quan      > 0
         )
     """
+    # Filtre de data: a) el cas general filtra per data de sortida (o data
+    # genèrica si la de sortida és null), b) excepció AGRI/Mª Soledad López,
+    # que el calendari pinta per data d'arribada (vegeu calendari.js:85-95);
+    # cal retornar-les també si la seva car_fecllegada cau al rang, encara que
+    # la car_fecsalida sigui fora. Aquesta segona branca s'aplica només per
+    # aquests transportistes, sinó alteraríem el comportament d'altres rutes.
     where_sql = """
-        WHERE  COALESCE(c.car_fecsalida, c.car_fecha) >= ?
-          AND  COALESCE(c.car_fecsalida, c.car_fecha) <  ?
+        WHERE  (
+                    COALESCE(c.car_fecsalida, c.car_fecha) >= ?
+                AND COALESCE(c.car_fecsalida, c.car_fecha) <  ?
+               )
+           OR  (
+                    c.car_fecllegada >= ?
+                AND c.car_fecllegada <  ?
+                AND (
+                        t.tra_nom LIKE 'AGRI%'
+                     OR t.tra_nom LIKE 'M% SOLEDAD LOPEZ%'
+                    )
+               )
     """
-    where_params: list = [desde_d, fins_d]
+    where_params: list = [desde_d, fins_d, desde_d, fins_d]
     if tra_codis:
         placeholders = ",".join(["?"] * len(tra_codis))
         where_sql += f" AND c.tra_codi IN ({placeholders})"
@@ -323,7 +339,11 @@ def llistar_carregues(
         ORDER BY COALESCE(c.car_fecsalida, c.car_fecha) DESC, c.car_numero DESC
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     """
-    sql_count = "SELECT COUNT(*) AS n FROM Cargas c WITH (NOLOCK) " + where_sql
+    sql_count = (
+        "SELECT COUNT(*) AS n FROM Cargas c WITH (NOLOCK) "
+        "LEFT JOIN TRANS t WITH (NOLOCK) ON t.tra_codi = c.tra_codi "
+        + where_sql
+    )
 
     conn = connectar()
     try:

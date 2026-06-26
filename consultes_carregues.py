@@ -564,6 +564,7 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                    RTRIM(cp.sal_codigo) AS sal_real,
                    RTRIM(cp.cli_codi)   AS cli_codi,
                    RTRIM(c.cli_nom)     AS cli_nom,
+                   RTRIM(cv.adr_nom)    AS adr_nom,
                    RTRIM(cp.cpa_pobla)  AS cpa_pobla,
                    RTRIM(cv.adr_pobla)  AS cv_pobla
             FROM (VALUES {values_sql}) AS d(eje_doc, sal_doc, alb_doc)
@@ -608,15 +609,25 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
         resolved_rows = conn.execute(sql_resolve, *params_resolve).fetchall()
 
         # Mapeig: (eje_doc, sal_doc, alb_doc) -> {sal_real, cli_codi, cli_nom, pobla}
+        # IMPORTANT: per a clients amb múltiples adreces d'enviament (cas
+        # HINDUSTANI FOODS amb destí APNA PUNJAB a HOSPITALET), KAIS imprimeix
+        # al PDF el nom i la població de CLIENVIO (l'adreça d'enviament
+        # concreta), no els del client facturador a CLIENTS. Per coincidir
+        # amb el PDF: adr_nom/adr_pobla prevalen sobre cli_nom/cpa_pobla.
         resolts: dict[tuple[str, str, str], dict] = {}
         for r in resolved_rows:
             sal_real = (r.sal_real or "").strip() or r.sal_doc.strip()
-            pobla = (r.cpa_pobla or "").strip() or (r.cv_pobla or "").strip()
+            adr_nom = (r.adr_nom or "").strip()
+            cli_nom = (r.cli_nom or "").strip()
+            cv_pobla = (r.cv_pobla or "").strip()
+            cpa_pobla = (r.cpa_pobla or "").strip()
             resolts[(r.eje_doc.strip(), r.sal_doc.strip(), r.alb_doc.strip())] = {
                 "sal_real": sal_real,
                 "cli_codi": (r.cli_codi or "").strip(),
-                "cli_nom":  (r.cli_nom  or "").strip(),
-                "pobla":    pobla,
+                # Prefereix l'adreça d'enviament (CLIENVIO) sobre el client
+                # facturador (CLIENTS) per coincidir amb el PDF de KAIS.
+                "cli_nom":  adr_nom or cli_nom,
+                "pobla":    cv_pobla or cpa_pobla,
             }
 
         # Pas 2: buscar línies amb les (eje, sal_real, alb) resoltes.

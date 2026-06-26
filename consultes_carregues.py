@@ -130,24 +130,12 @@ def llistar_carregues(
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
                 ORDER BY
-                    CASE
-                        WHEN EXISTS (
-                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                            WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                              AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                              AND  s.sal_codigo       = cp.sal_codigo
-                        ) AND (
-                            SELECT COUNT(*) FROM SERIEALB s WITH (NOLOCK)
-                            WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                              AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                        ) = 1
-                        THEN 0 ELSE 1
-                    END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
                     """ + linies_corruptes_sql + """,
                     COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
                                           COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
-                    CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
+                    CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END,
+                    cp.cpa_estat ASC
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
@@ -185,24 +173,12 @@ def llistar_carregues(
                          ) )
                 -- Prioritat: vegeu comentari a `exists_palletizable_sql`.
                 ORDER BY
-                    CASE
-                        WHEN EXISTS (
-                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                            WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                              AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                              AND  s.sal_codigo       = cp.sal_codigo
-                        ) AND (
-                            SELECT COUNT(*) FROM SERIEALB s WITH (NOLOCK)
-                            WHERE  s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
-                              AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
-                        ) = 1
-                        THEN 0 ELSE 1
-                    END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
                     """ + linies_corruptes_sql + """,
                     COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
                                           COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
-                    CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END
+                    CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END,
+                    cp.cpa_estat ASC
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
@@ -306,24 +282,12 @@ def llistar_carregues(
                          ) )
                 -- Prioritat: vegeu comentari a `exists_palletizable_sql`.
                 ORDER BY
-                    CASE
-                        WHEN EXISTS (
-                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                            WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
-                              AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
-                              AND  s.sal_codigo       = cp.sal_codigo
-                        ) AND (
-                            SELECT COUNT(*) FROM SERIEALB s WITH (NOLOCK)
-                            WHERE  s.eje_ejercicio    = SUBSTRING(d2.det_documento, 1, 4)
-                              AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
-                        ) = 1
-                        THEN 0 ELSE 1
-                    END,
                     CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
                     """ + linies_corruptes_sql + """,
                     COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
                                           COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
-                    CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END
+                    CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END,
+                    cp.cpa_estat ASC
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d2.det_documento, 1, 4)
@@ -631,31 +595,21 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
                 -- Prioritat (vegeu també `exists_palletizable_sql`):
-                --   1) SERIEALB inequívoc (un sol mapping) → definitiu.
-                --   2) tra_codi coincident → desempata mappings múltiples (MATAS).
-                --   3) Coherència de línies (lin_unit*pes_per_sac vs lin_quan):
+                --   1) tra_codi coincident amb el de la càrrega.
+                --   2) Coherència de línies (lin_unit*pes_per_sac vs lin_quan):
                 --      despriorititza albarans amb dades corruptes (cas 0002430
                 --      sal=56 amb 3501 sacs i lin_quan=8697 → ratio 2.48 vs 25
                 --      esperat).
-                --   4) Proximitat de cpa_fechaservir a la data de referència de
-                --      la càrrega (car_fecllegada → car_fecsalida → car_fecha)
-                --      → discrimina entre dos pending del mateix tra (cas
-                --      0002389/0002423 amb cpa_albara=0004487 compartit).
-                --   5) Match directe per sal_codigo → fallback final.
+                --   3) Proximitat de cpa_fechaservir a la data de referència de
+                --      la càrrega (car_fecllegada → car_fecsalida → car_fecha).
+                --      És el criteri principal: discrimina entre dos pending
+                --      del mateix tra (URBAN/0002423, RYMOT/0002417, BOIX/0002431,
+                --      FLECA CAL TIANA/0002426). NUTREX/SIGFREDO també OK perquè
+                --      la data de servir només coincideix amb el real.
+                --   4) Match directe per sal_codigo → fallback per casos sense
+                --      discriminació de data.
+                --   5) cpa_estat (pendent primer).
                 ORDER BY
-                    CASE
-                        WHEN EXISTS (
-                            SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                            WHERE  s.eje_ejercicio    = d.eje_doc
-                              AND  s.sal_SerAlbDefPed = d.sal_doc
-                              AND  s.sal_codigo       = cp.sal_codigo
-                        ) AND (
-                            SELECT COUNT(*) FROM SERIEALB s WITH (NOLOCK)
-                            WHERE  s.eje_ejercicio    = d.eje_doc
-                              AND  s.sal_SerAlbDefPed = d.sal_doc
-                        ) = 1
-                        THEN 0 ELSE 1
-                    END,
                     CASE WHEN RTRIM(cp.tra_codi) = @carrega_tra THEN 0 ELSE 1 END,
                     CASE WHEN EXISTS (
                         SELECT 1
@@ -672,7 +626,8 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                                 > l2.lin_quan * 0.5
                     ) THEN 1 ELSE 0 END,
                     COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir, @carrega_data)), 999999),
-                    CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END
+                    CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END,
+                    cp.cpa_estat ASC
             ) cp
             LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi
             -- Direcció d'enviament (CLIENVIO): fallback per a `pobla` quan CPALBARA.cpa_pobla és buit.

@@ -41,8 +41,8 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
 
     resultat = ResultatAgrupacio()
 
-    # Cache de comandes (eje, sal, cpa, tra) per evitar recalcular si surt 2 cops.
-    cache_comanda: dict[tuple[str, str, str, str], object] = {}
+    # Cache de comandes (eje, sal, cpa, tra, data) per evitar recalcular si surt 2 cops.
+    cache_comanda: dict[tuple[str, str, str, str, str], object] = {}
 
     # Estructura intermèdia: (art_codi) -> {
     #     "descrip", "tunitat",
@@ -80,12 +80,18 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
             ))
             continue
 
+        # Data de referència de la càrrega per discriminar entre dos pending
+        # amb mateix tra_codi (cassos URBAN, RYMOT, BOIX COMAS): preferim
+        # car_fecllegada (data d'arribada al destí), després car_fecsalida.
+        data_carrega = c.get("car_fecllegada") or c.get("car_fecsalida") or c.get("car_fecha")
+
         for a in comandes:
             tra_codi = c.get("tra_codi", "") or ""
-            # `tra_codi` forma part de la clau de cache: dues càrregues amb
-            # tra_codi diferents poden resoldre la mateixa (eje, sal, alb) a
-            # albarans diferents quan SERIEALB té mappings múltiples.
-            key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"], tra_codi)
+            # `tra_codi` i `data_carrega` formen part de la clau de cache:
+            # cargues amb tra/data diferents poden resoldre el mateix (eje,
+            # sal, alb) a albarans diferents (cas 0004487: 0002389 → FORN CAP
+            # VILA per data 25/06, 0002423 → URBAN SPICES per data 29/06).
+            key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"], tra_codi, data_carrega or "")
             try:
                 if key in cache_comanda:
                     res = cache_comanda[key]
@@ -94,6 +100,7 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                         a["sal_codigo"], a["cpa_albara"],
                         tra_codi_carrega=tra_codi,
                         eje_ejercicio=a["eje_ejercicio"],
+                        data_carrega=data_carrega,
                     )
                     cache_comanda[key] = res
             except Exception as e:

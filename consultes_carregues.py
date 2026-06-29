@@ -229,34 +229,53 @@ def llistar_carregues(
     # d'article 30000 (FARINA) per contractar el transportista, paral·lela a
     # la carrega "detall" amb totes les comandes. Els operaris només volen
     # veure la versio detall. Regla: la carrega és "resum" si TOTES les
-    # linies a ALBLINIA son art_codi='30000'. Carregues sense cap linia
-    # (rares) no es filtren.
-    where_sql += """
+    # linies (resoltes via CPALBARA+SERIEALB com la resta de queries) son
+    # art_codi='30000'. Carregues sense cap linia no es filtren.
+    #
+    # IMPORTANT: usem la mateixa resolucio CPALBARA+SERIEALB que kg_total i
+    # exists_palletizable. Si nomes fem JOIN directe (l.sal_codigo =
+    # SUBSTRING(d.det_documento, 5, 2)) no trobem la linia art 30000 quan
+    # la sèrie del det_documento es diferent de la sèrie real de l'albara
+    # (cas pedido en una sèrie i albara en una altra via SERIEALB).
+    def _resum_branca(alias_d, alias_l, art_cond):
+        return f"""
+            EXISTS (
+                SELECT 1 FROM Detcargas {alias_d} WITH (NOLOCK)
+                CROSS APPLY (
+                    SELECT TOP 1 cp.sal_codigo
+                    FROM   CPALBARA cp WITH (NOLOCK)
+                    WHERE  cp.eje_ejercicio = SUBSTRING({alias_d}.det_documento, 1, 4)
+                      AND  cp.cpa_albara    = SUBSTRING({alias_d}.det_documento, 7, 7)
+                      AND  ( cp.sal_codigo = SUBSTRING({alias_d}.det_documento, 5, 2)
+                             OR EXISTS (
+                                 SELECT 1 FROM SERIEALB s WITH (NOLOCK)
+                                 WHERE  s.eje_ejercicio    = SUBSTRING({alias_d}.det_documento, 1, 4)
+                                   AND  s.sal_SerAlbDefPed = SUBSTRING({alias_d}.det_documento, 5, 2)
+                                   AND  s.sal_codigo       = cp.sal_codigo
+                             ) )
+                    ORDER BY
+                        CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
+                        COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
+                                              COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
+                        CASE WHEN cp.sal_codigo = SUBSTRING({alias_d}.det_documento, 5, 2) THEN 0 ELSE 1 END,
+                        cp.cpa_estat ASC
+                ) sal_resolt_{alias_d}
+                JOIN ALBLINIA {alias_l} WITH (NOLOCK)
+                  ON  {alias_l}.eje_ejercicio = SUBSTRING({alias_d}.det_documento, 1, 4)
+                  AND {alias_l}.sal_codigo    = sal_resolt_{alias_d}.sal_codigo
+                  AND {alias_l}.cpa_albara    = SUBSTRING({alias_d}.det_documento, 7, 7)
+                WHERE {alias_d}.eje_ejercicio = c.eje_ejercicio
+                  AND {alias_d}.sca_serie     = c.sca_serie
+                  AND {alias_d}.car_numero    = c.car_numero
+                  AND {alias_d}.det_tipo      IN ('A','P')
+                  AND {alias_l}.art_codi      {art_cond}
+            )
+        """
+
+    where_sql += f"""
       AND NOT (
-          EXISTS (
-              SELECT 1 FROM Detcargas d_r WITH (NOLOCK)
-              JOIN ALBLINIA l_r WITH (NOLOCK)
-                ON  l_r.eje_ejercicio = SUBSTRING(d_r.det_documento, 1, 4)
-                AND l_r.sal_codigo    = SUBSTRING(d_r.det_documento, 5, 2)
-                AND l_r.cpa_albara    = SUBSTRING(d_r.det_documento, 7, 7)
-              WHERE d_r.eje_ejercicio = c.eje_ejercicio
-                AND d_r.sca_serie     = c.sca_serie
-                AND d_r.car_numero    = c.car_numero
-                AND d_r.det_tipo      IN ('A','P')
-                AND l_r.art_codi      = '30000'
-          )
-          AND NOT EXISTS (
-              SELECT 1 FROM Detcargas d_r2 WITH (NOLOCK)
-              JOIN ALBLINIA l_r2 WITH (NOLOCK)
-                ON  l_r2.eje_ejercicio = SUBSTRING(d_r2.det_documento, 1, 4)
-                AND l_r2.sal_codigo    = SUBSTRING(d_r2.det_documento, 5, 2)
-                AND l_r2.cpa_albara    = SUBSTRING(d_r2.det_documento, 7, 7)
-              WHERE d_r2.eje_ejercicio = c.eje_ejercicio
-                AND d_r2.sca_serie     = c.sca_serie
-                AND d_r2.car_numero    = c.car_numero
-                AND d_r2.det_tipo      IN ('A','P')
-                AND l_r2.art_codi      <> '30000'
-          )
+          {_resum_branca('d_r', 'l_r', "= '30000'")}
+          AND NOT {_resum_branca('d_r2', 'l_r2', "<> '30000'")}
       )
     """
 

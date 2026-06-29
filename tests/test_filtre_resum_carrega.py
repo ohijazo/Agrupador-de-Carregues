@@ -56,23 +56,25 @@ def test_llistar_carregues_exclou_resum_30000(monkeypatch):
     # Han d'haver-se executat el count i la query d'items.
     assert len(fake.executed_sqls) >= 2
 
-    # AL MENYS UNA SQL ha de contenir el filtre que NEGA els resums.
-    # La regla és: hi ha línia amb art 30000 AND no hi ha línia amb altre art.
-    has_clausula_30000 = any(
-        "art_codi" in sql and "'30000'" in sql and "NOT EXISTS" in sql
-        for sql in fake.executed_sqls
+    # Comprovacio semantica: el SQL ha de contenir les dues branques del
+    # filtre (positiva: hi ha art=30000; negativa: no hi ha art<>30000).
+    # La sintaxi exacta (NOT EXISTS adjacents) pot variar amb refactors;
+    # comprovem nomes el contingut clau.
+    assert any("= '30000'" in sql for sql in fake.executed_sqls), (
+        "Falta la branca positiva del filtre resum (art_codi = '30000'). "
+        "Aixo torna a mostrar el duplicat del transportista. Reaplica el filtre."
     )
-    assert has_clausula_30000, (
-        "ATENCIO: el filtre de carrega 'resum' (art_codi=30000) s'ha eliminat "
-        "del WHERE de llistar_carregues. Aixo torna a mostrar el duplicat del "
-        "transportista. Reaplica el filtre."
+    assert any("<> '30000'" in sql for sql in fake.executed_sqls), (
+        "Falta la branca negativa del filtre resum (art_codi <> '30000'). "
+        "Sense aquesta, també s'excluirien carregues legitimes amb art 30000."
     )
-
-    # Verificació explicita per ambdues vessants (positiva i negativa).
-    assert any("= '30000'" in sql for sql in fake.executed_sqls), \
-        "Falta la branca positiva (alguna línia és art 30000)"
-    assert any("<> '30000'" in sql for sql in fake.executed_sqls), \
-        "Falta la branca negativa (cap línia és art != 30000)"
+    # Sense la resolucio CPALBARA+SERIEALB, el filtre no troba la linia
+    # 30000 quan viu en una serie diferent (cas habitual al ERP).
+    assert any("SERIEALB" in sql and "art_codi" in sql.split("SERIEALB", 1)[1]
+               for sql in fake.executed_sqls), (
+        "El filtre resum no usa la resolucio CPALBARA+SERIEALB: pot perdre "
+        "la linia 30000 quan viu en una serie diferent. Cas detectat el 2026-06-29."
+    )
 
     assert result["items"] == []
     assert result["total"] == 0

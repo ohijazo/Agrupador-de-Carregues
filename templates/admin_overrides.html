@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overrides de data de càrrega · Agrupador</title>
+    <link rel="icon" type="image/svg+xml" href="{{ static_url('favicon.svg') }}">
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/admin.css') }}">
+</head>
+<body>
+
+<header class="app-header">
+    <div class="container header-row">
+        <div>
+            <h1>Overrides de data de càrrega</h1>
+            <p class="subtitle">Defineix manualment la data planificada quan KAIS l'ha sobreescrit</p>
+        </div>
+        <div class="header-help">
+            <a href="/" class="btn btn-icon" title="Tornar a l'app" aria-label="Inici" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">←</a>
+            {% include '_user_menu.html' %}
+        </div>
+    </div>
+</header>
+
+<main class="container admin-main">
+    <section class="panel">
+        <div class="panel-head">
+            <h2>Overrides (<span id="overrides-count">…</span>)</h2>
+            <button type="button" id="btn-nou-override" class="btn btn-primary">+ Nou override</button>
+        </div>
+        <p class="muted" style="margin-top:0.5rem;">
+            Quan una càrrega passa a "Sortida" a KAIS, KAIS sobreescriu la data planificada de sortida.
+            L'app captura aquesta data automàticament abans del canvi (snapshot). Aquesta pantalla és
+            només per a càrregues on el snapshot no es va captar a temps i cal corregir manualment.
+        </p>
+        <div id="overrides-error" class="alert-error" hidden></div>
+        <div class="table-wrap">
+            <table class="data-table" id="taula-overrides">
+                <thead>
+                    <tr>
+                        <th>Càrrega</th>
+                        <th>Data planificada</th>
+                        <th>Motiu</th>
+                        <th>Creat per</th>
+                        <th>Actualitzat</th>
+                        <th class="col-acc">Accions</th>
+                    </tr>
+                </thead>
+                <tbody><tr><td colspan="6" class="muted" style="text-align:center;padding:1.5rem;">Carregant…</td></tr></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<dialog id="dlg-override" class="app-dialog">
+    <article>
+        <header>
+            <h3 id="dlg-override-titol">Nou override</h3>
+            <button type="button" class="dialog-close" data-close aria-label="Tanca">×</button>
+        </header>
+        <form id="form-override" class="dlg-form">
+            <div class="field-row">
+                <label for="f-carrega-id">Càrrega (YYYY/SS/NNNNNNN)</label>
+                <input type="text" id="f-carrega-id" name="carrega_id" required placeholder="2026/01/0002367" autocomplete="off">
+                <small class="muted">Format: exercici / sèrie (2 dígits) / número (7 dígits).</small>
+            </div>
+            <div class="field-row">
+                <label for="f-fecsalida">Data planificada de sortida</label>
+                <input type="datetime-local" id="f-fecsalida" name="car_fecsalida" required>
+                <small class="muted">Aquesta data substituirà la que KAIS hagi sobreescrit.</small>
+            </div>
+            <div class="field-row">
+                <label for="f-motiu">Motiu (opcional)</label>
+                <input type="text" id="f-motiu" name="motiu" maxlength="200" placeholder="Ex: snapshot perdut, KAIS va canviar abans del deploy">
+            </div>
+            <div id="form-error" class="alert-error" hidden></div>
+            <footer class="dlg-footer">
+                <button type="button" class="btn btn-ghost" data-close>Cancel·la</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-override">Desar</button>
+            </footer>
+        </form>
+    </article>
+</dialog>
+
+<div id="toasts" class="toasts"></div>
+
+<script src="{{ static_url('js/admin_overrides.js') }}"></script>
+<script src="{{ static_url('js/user-menu.js') }}"></script>
+</body>
+</html>

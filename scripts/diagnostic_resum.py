@@ -25,7 +25,7 @@ from consultes_carregues import connectar
 
 SQL_HEAD = """
 SELECT c.car_numero, c.car_descripcion, c.car_estat,
-       c.car_fecsalida, c.car_fecllegada, c.tra_codi
+       c.car_fecha, c.car_fecsalida, c.car_fecllegada, c.tra_codi
 FROM Cargas c WITH (NOLOCK)
 WHERE c.eje_ejercicio='2026' AND c.sca_serie='01' AND c.car_numero=?
 """
@@ -102,6 +102,7 @@ def diag(conn, car):
         return
     print(f"  descripcio   : {head.car_descripcion!r}")
     print(f"  car_estat    : {head.car_estat}")
+    print(f"  car_fecha    : {head.car_fecha}")
     print(f"  car_fecsalida: {head.car_fecsalida}")
     print(f"  car_fecllegada: {head.car_fecllegada}")
     print(f"  tra_codi     : {head.tra_codi}")

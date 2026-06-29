@@ -360,6 +360,12 @@ def admin_usuaris_page():
     return render_template("admin_usuaris.html")
 
 
+@app.route("/admin/overrides-data")
+@auth.requires_rol("admin")
+def admin_overrides_page():
+    return render_template("admin_overrides.html")
+
+
 @app.route("/api/admin/usuaris", methods=["GET"])
 @auth.requires_rol("admin")
 def api_admin_usuaris_llistar():
@@ -451,6 +457,94 @@ def api_admin_usuaris_password(id_):
         return _err_validacio(str(e))
     except Exception:
         log.exception("admin_usuaris password")
+        return _err_genèric()
+
+
+# --- Admin: override de la data planificada de càrrega ---------------------
+# KAIS sobreescriu car_fecsalida quan la càrrega passa a Sortida; el snapshot
+# captura el valor pre-Sortida automàticament, però per a càrregues "perdudes"
+# (ja en Sortida abans del deploy d'aquesta feature, o on el snapshot no
+# arribava a temps) un admin pot definir manualment la data planificada.
+def _parse_carrega_id(raw: str) -> str | None:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    parts = s.split("/")
+    if len(parts) != 3:
+        return None
+    eje, sca, car = parts
+    if not (eje.isdigit() and len(eje) == 4):
+        return None
+    if not (sca.isdigit() and len(sca) == 2):
+        return None
+    if not car.isdigit():
+        return None
+    return f"{eje}/{sca}/{car.zfill(7)}"
+
+
+@app.route("/api/admin/carrega-overrides", methods=["GET"])
+@auth.requires_rol("admin")
+def api_admin_overrides_llistar():
+    try:
+        import carrega_data_planificada as cdp
+        return jsonify(cdp.llistar_overrides())
+    except Exception:
+        log.exception("admin overrides llistar")
+        return _err_genèric()
+
+
+@app.route("/api/admin/carrega-overrides", methods=["POST"])
+@auth.requires_rol("admin")
+def api_admin_overrides_crear_o_actualitzar():
+    body = request.get_json(silent=True) or {}
+    carrega_id = _parse_carrega_id(body.get("carrega_id", ""))
+    if not carrega_id:
+        return _err_validacio("carrega_id invàlid (format esperat: YYYY/SS/NNNNNNN).")
+    dt_raw = (body.get("car_fecsalida") or "").strip()
+    if not dt_raw:
+        return _err_validacio("Cal indicar car_fecsalida (YYYY-MM-DD HH:MM).")
+    # Accepta "YYYY-MM-DD" o "YYYY-MM-DD HH:MM"
+    try:
+        if len(dt_raw) <= 10:
+            dt = datetime.strptime(dt_raw, "%Y-%m-%d")
+        else:
+            dt = datetime.strptime(dt_raw[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return _err_validacio("Format de data invàlid (YYYY-MM-DD o YYYY-MM-DD HH:MM).")
+    motiu = (body.get("motiu") or "").strip() or None
+    try:
+        import carrega_data_planificada as cdp
+        result = cdp.set_override(
+            carrega_id=carrega_id,
+            car_fecsalida=dt,
+            motiu=motiu,
+            created_by_id=session.get("user_id"),
+        )
+        audit.log("carrega_override_set", target=carrega_id,
+                  detall={"car_fecsalida": dt.isoformat(), "motiu": motiu})
+        return jsonify(result), 200
+    except (ValueError, TypeError) as e:
+        return _err_validacio(str(e))
+    except Exception:
+        log.exception("admin override set")
+        return _err_genèric()
+
+
+@app.route("/api/admin/carrega-overrides/<path:carrega_id>", methods=["DELETE"])
+@auth.requires_rol("admin")
+def api_admin_overrides_eliminar(carrega_id):
+    cid = _parse_carrega_id(carrega_id)
+    if not cid:
+        return _err_validacio("carrega_id invàlid.")
+    try:
+        import carrega_data_planificada as cdp
+        ok = cdp.delete_override(cid)
+        if not ok:
+            return jsonify({"error": "Override no trobat."}), 404
+        audit.log("carrega_override_delete", target=cid)
+        return jsonify({"ok": True})
+    except Exception:
+        log.exception("admin override delete")
         return _err_genèric()
 
 

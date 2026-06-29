@@ -409,9 +409,25 @@ def llistar_carregues(
             "kg_total": float(r.kg_total) if r.kg_total is not None else 0.0,
             "num_comandes": int(r.num_comandes) if r.num_comandes is not None else 0,
             "_is_resum_candidate": bool(r.is_resum_candidate),
+            "_car_fecsalida_raw": r.car_fecsalida,
         }
         for r in rows
     ]
+
+    # Snapshot / override de la data planificada: KAIS sobreescriu
+    # car_fecsalida quan la carrega passa a Sortida (car_estat=2). Capturem el
+    # valor planificat dels items no-Sortida i el reapliquem als ja-Sortida que
+    # tinguem snapshotted (o override manual d'admin). Vegeu carrega_data_planificada.py.
+    try:
+        import carrega_data_planificada as _cdp
+        _cdp.upsert_snapshots(items)
+        _cdp.aplicar(items)
+    except Exception:
+        # No bloqueja el llistat si PG cau o el modul no es pot importar.
+        import logging
+        logging.getLogger("agrupacio.carregues").exception(
+            "data_planificada: snapshot/aplicar fallit, continuem amb dades live"
+        )
 
     # Filtre resum per parell: si al mateix dia hi ha dues (o mes) carregues
     # amb el mateix kg_total i una d'elles te nomes 1 linia art 30000 (es a
@@ -432,9 +448,10 @@ def llistar_carregues(
     if ids_amagar:
         items = [it for it in items if it["carrega_id"] not in ids_amagar]
         total = max(int(total) - len(ids_amagar), 0)
-    # Netegem el flag intern abans de retornar al client
+    # Netegem els flags interns abans de retornar al client
     for it in items:
         it.pop("_is_resum_candidate", None)
+        it.pop("_car_fecsalida_raw", None)
     return {"items": items, "total": int(total), "limit": limit, "offset": offset}
 
 

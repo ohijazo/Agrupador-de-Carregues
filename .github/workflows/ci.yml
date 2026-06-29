@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install system deps (pyodbc needs unixODBC headers)
+        run: sudo apt-get update && sudo apt-get install -y unixodbc-dev
+
+      - name: Install dev requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run pytest (tests que no requereixen PG s'executen, la resta salten)
+        run: pytest -v
+        env:
+          # No definim PG_HOST → els tests que requereixen PostgreSQL salten
+          # automàticament (vegeu tests/conftest.py).
+          AUTH_ENABLED: 'false'
+
+      - name: Run mypy sobre fitxers anotats (atrapa el bug del 28/06)
+        run: mypy agregador.py

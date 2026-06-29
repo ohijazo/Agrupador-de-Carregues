@@ -8,7 +8,7 @@ Per a cada càrrega seleccionada:
 El motor s'importa via sys.path injectat a app.py.
 """
 from collections import defaultdict
-from typing import Iterable
+from typing import Any, Iterable
 
 from consultes_carregues import obtenir_comandes_carrega, obtenir_descrip_articles
 from models_agrupacio import (
@@ -42,7 +42,7 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
     resultat = ResultatAgrupacio()
 
     # Cache de comandes (eje, sal, cpa, tra, data) per evitar recalcular si surt 2 cops.
-    cache_comanda: dict[tuple[str, str, str, str, str], object] = {}
+    cache_comanda: dict[tuple[str, str, str, str, str], Any] = {}
 
     # Estructura intermèdia: (art_codi) -> {
     #     "descrip", "tunitat",
@@ -83,7 +83,9 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
         # Data de referència de la càrrega per discriminar entre dos pending
         # amb mateix tra_codi (cassos URBAN, RYMOT, BOIX COMAS): preferim
         # car_fecllegada (data d'arribada al destí), després car_fecsalida.
-        data_carrega = c.get("car_fecllegada") or c.get("car_fecsalida") or c.get("car_fecha")
+        # Tipus: string "YYYY-MM-DD" — `consultes_carregues.py:349-353` serialitza
+        # les dates amb strftime abans de retornar-les al payload.
+        data_carrega: str | None = c.get("car_fecllegada") or c.get("car_fecsalida") or c.get("car_fecha")
 
         for a in comandes:
             tra_codi = c.get("tra_codi", "") or ""
@@ -103,6 +105,11 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                         data_carrega=data_carrega,
                     )
                     cache_comanda[key] = res
+            except (TypeError, AttributeError, NameError, ImportError):
+                # Bugs de codi (no de dades): no els ofeguem com a incidència
+                # silenciosa. Que l'endpoint torni 500 perquè es vegi al log
+                # immediatament (cas 28/06/2026 amb data_carrega.isoformat()).
+                raise
             except Exception as e:
                 resultat.incidencies.append(Incidencia(
                     carrega_id=c["carrega_id"],
@@ -118,7 +125,7 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                 estat_str = "-"
                 if res is not None:
                     estat_attr = getattr(res, "estat", None)
-                    estat_str = estat_attr.value if hasattr(estat_attr, "value") else str(estat_attr)
+                    estat_str = estat_attr.value if hasattr(estat_attr, "value") else str(estat_attr)  # type: ignore[union-attr]
                 resultat.incidencies.append(Incidencia(
                     carrega_id=c["carrega_id"],
                     comanda=f"{a['sal_codigo']}/{a['cpa_albara']}",

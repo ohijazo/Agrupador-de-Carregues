@@ -1009,3 +1009,64 @@
     .cal-kpi-val { font-size: 1rem; }
     .cal-kpi-lbl { font-size: .6rem; }
 }
+
+/* --- Grup de càrregues petites (<1000 kg) ------------------------
+   Es renderitzen agrupades sota un <details> desplegable al final
+   de la llista del dia per reduir scroll vertical. */
+.cal-petites-group {
+    margin-top: .25rem;
+    padding: 0;
+}
+.cal-petites-group details {
+    border-top: 1px dashed var(--gray-300);
+    padding-top: .25rem;
+}
+.cal-petites-group summary {
+    cursor: pointer;
+    list-style: none;
+    padding: .25rem .4rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .75rem;
+    color: var(--gray-600);
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+.cal-petites-group summary:hover {
+    background: var(--gray-100);
+    color: var(--gray-800);
+}
+.cal-petites-group summary::-webkit-details-marker { display: none; }
+.cal-petites-group summary::before {
+    content: "▸";
+    display: inline-block;
+    width: .6rem;
+    font-size: .65rem;
+    color: var(--gray-500);
+    transition: transform .12s ease;
+}
+.cal-petites-group details[open] summary::before { transform: rotate(90deg); }
+.cal-petites-group .cal-petites-ico {
+    font-size: .85rem;
+    line-height: 1;
+    opacity: .6;
+}
+.cal-petites-group .cal-petites-lbl {
+    flex: 1;
+    font-weight: 600;
+    color: var(--gray-700);
+}
+.cal-petites-group .cal-petites-kg {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    color: var(--gray-600);
+}
+.cal-petites-list {
+    list-style: none;
+    margin: .2rem 0 0 0;
+    padding: 0 0 0 .35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}

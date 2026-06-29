@@ -225,6 +225,41 @@ def llistar_carregues(
         """
         where_params.append(art_codi)
 
+    # Excloure carregues "resum": KAIS en genera una versio amb 1 linia
+    # d'article 30000 (FARINA) per contractar el transportista, paral·lela a
+    # la carrega "detall" amb totes les comandes. Els operaris només volen
+    # veure la versio detall. Regla: la carrega és "resum" si TOTES les
+    # linies a ALBLINIA son art_codi='30000'. Carregues sense cap linia
+    # (rares) no es filtren.
+    where_sql += """
+      AND NOT (
+          EXISTS (
+              SELECT 1 FROM Detcargas d_r WITH (NOLOCK)
+              JOIN ALBLINIA l_r WITH (NOLOCK)
+                ON  l_r.eje_ejercicio = SUBSTRING(d_r.det_documento, 1, 4)
+                AND l_r.sal_codigo    = SUBSTRING(d_r.det_documento, 5, 2)
+                AND l_r.cpa_albara    = SUBSTRING(d_r.det_documento, 7, 7)
+              WHERE d_r.eje_ejercicio = c.eje_ejercicio
+                AND d_r.sca_serie     = c.sca_serie
+                AND d_r.car_numero    = c.car_numero
+                AND d_r.det_tipo      IN ('A','P')
+                AND l_r.art_codi      = '30000'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM Detcargas d_r2 WITH (NOLOCK)
+              JOIN ALBLINIA l_r2 WITH (NOLOCK)
+                ON  l_r2.eje_ejercicio = SUBSTRING(d_r2.det_documento, 1, 4)
+                AND l_r2.sal_codigo    = SUBSTRING(d_r2.det_documento, 5, 2)
+                AND l_r2.cpa_albara    = SUBSTRING(d_r2.det_documento, 7, 7)
+              WHERE d_r2.eje_ejercicio = c.eje_ejercicio
+                AND d_r2.sca_serie     = c.sca_serie
+                AND d_r2.car_numero    = c.car_numero
+                AND d_r2.det_tipo      IN ('A','P')
+                AND l_r2.art_codi      <> '30000'
+          )
+      )
+    """
+
     # Suma de kg per càrrega — fórmula alineada amb com KAIS imprimeix la
     # columna "Cantidad" de l'ordre de càrrega:
     #   - Per a totes les unitats (Sxx, GRA, UNI…), el "Cantidad" és `lin_quan`.

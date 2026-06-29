@@ -15,6 +15,10 @@
     const fmtMes = new Intl.DateTimeFormat("ca-ES", { month: "long", year: "numeric" });
     const fmtDiaLlarg = new Intl.DateTimeFormat("ca-ES", { weekday: "long", day: "numeric", month: "long" });
 
+    // Càrregues amb menys d'aquest pes (kg) es renderitzen agrupades sota un
+    // <details> desplegable per reduir scroll vertical al calendari.
+    const LLINDAR_PETITES_KG = 1000;
+
     function capitalitzar(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
     function debounce(fn, delay) {
         let t = null;
@@ -449,8 +453,16 @@
                 if (llista.length > 0) {
                     const ul = document.createElement("ul");
                     ul.className = "cal-cell-list";
-                    let rangAnt = null;
+                    // Separem grans i petites. Les petites (<LLINDAR_PETITES_KG)
+                    // s'agrupen al final en un <details> desplegable per reduir
+                    // scroll vertical al calendari.
+                    const grans = [];
+                    const petites = [];
                     for (const c of llista) {
+                        (kgDeCarrega(c) < LLINDAR_PETITES_KG ? petites : grans).push(c);
+                    }
+                    let rangAnt = null;
+                    for (const c of grans) {
                         const liEvt = renderEvent(c, iso);
                         const rang = rangSort(c);
                         if (rangAnt !== null && rang !== rangAnt) {
@@ -459,11 +471,41 @@
                         rangAnt = rang;
                         ul.appendChild(liEvt);
                     }
+                    if (petites.length > 0) {
+                        const kgPetites = petites.reduce((acc, c) => acc + kgDeCarrega(c), 0);
+                        const li = document.createElement("li");
+                        li.className = "cal-petites-group";
+                        const det = document.createElement("details");
+                        const sum = document.createElement("summary");
+                        sum.innerHTML =
+                            `<span class="cal-petites-ico" aria-hidden="true">📦</span>` +
+                            `<span class="cal-petites-lbl">+${petites.length} càrregues petites</span>` +
+                            `<span class="cal-petites-kg">${escapeHtml(fmtKg0.format(kgPetites))} kg</span>`;
+                        sum.title = `${petites.length} càrregues de menys de ${fmtNum.format(LLINDAR_PETITES_KG)} kg — ${fmtKg2.format(kgPetites)} kg en total`;
+                        det.appendChild(sum);
+                        const innerUl = document.createElement("ul");
+                        innerUl.className = "cal-petites-list";
+                        let rangAntP = null;
+                        for (const c of petites) {
+                            const liEvt = renderEvent(c, iso);
+                            const rang = rangSort(c);
+                            if (rangAntP !== null && rang !== rangAntP) {
+                                liEvt.classList.add("is-rang-break");
+                            }
+                            rangAntP = rang;
+                            innerUl.appendChild(liEvt);
+                        }
+                        det.appendChild(innerUl);
+                        li.appendChild(det);
+                        ul.appendChild(li);
+                    }
                     cell.appendChild(ul);
                 }
 
-                // Desglossament Kg al peu del dia (després de la llista): una
-                // sola fila amb GRA · SACS · Total, cada valor seguit de "Kg".
+                // Desglossament Kg al peu del dia (després de la llista). Sempre
+                // renderitzem les 3 files (GRANEL, SACS, TOTAL) si el dia té
+                // càrregues, encara que algun valor sigui 0 — l'usuari ho vol
+                // així per a coherència visual entre dies.
                 if (llista.length > 0) {
                     let kgGra = 0, kgSacs = 0;
                     for (const c of llista) {
@@ -472,24 +514,20 @@
                         else kgSacs += kg;
                     }
                     const kgTotal = kgGra + kgSacs;
-                    if (kgTotal > 0) {
-                        const kgBox = document.createElement("div");
-                        kgBox.className = "cal-cell-kgs";
-                        const fila = (cls, ico, lbl, val, tip) =>
-                            `<div class="cal-kg-line ${cls}" title="${escapeHtml(tip)}">` +
-                                `<span class="cal-kg-ico" aria-hidden="true">${ico}</span>` +
-                                `<span class="cal-kg-lbl">${lbl}</span>` +
-                                `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(val))} kg</span>` +
-                            `</div>`;
-                        const parts = [];
-                        if (kgGra > 0) parts.push(fila("is-gra", "🌾", "GRANEL", kgGra, `Granel: ${fmtKg2.format(kgGra)} kg`));
-                        if (kgSacs > 0) parts.push(fila("is-sacs", "📦", "SACS", kgSacs, `Sacs: ${fmtKg2.format(kgSacs)} kg`));
-                        if (kgGra > 0 && kgSacs > 0) {
-                            parts.push(fila("is-total", "Σ", "TOTAL", kgTotal, `Total: ${fmtKg2.format(kgTotal)} kg`));
-                        }
-                        kgBox.innerHTML = parts.join("");
-                        cell.appendChild(kgBox);
-                    }
+                    const kgBox = document.createElement("div");
+                    kgBox.className = "cal-cell-kgs";
+                    const fila = (cls, ico, lbl, val, tip) =>
+                        `<div class="cal-kg-line ${cls}" title="${escapeHtml(tip)}">` +
+                            `<span class="cal-kg-ico" aria-hidden="true">${ico}</span>` +
+                            `<span class="cal-kg-lbl">${lbl}</span>` +
+                            `<span class="cal-kg-val">${escapeHtml(fmtKg0.format(val))} kg</span>` +
+                        `</div>`;
+                    kgBox.innerHTML = [
+                        fila("is-gra",   "🌾", "GRANEL", kgGra,   `Granel: ${fmtKg2.format(kgGra)} kg`),
+                        fila("is-sacs",  "📦", "SACS",   kgSacs,  `Sacs: ${fmtKg2.format(kgSacs)} kg`),
+                        fila("is-total", "Σ",  "TOTAL",  kgTotal, `Total: ${fmtKg2.format(kgTotal)} kg`),
+                    ].join("");
+                    cell.appendChild(kgBox);
                 }
                 frag.appendChild(cell);
             }

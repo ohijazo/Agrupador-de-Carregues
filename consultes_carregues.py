@@ -225,58 +225,48 @@ def llistar_carregues(
         """
         where_params.append(art_codi)
 
-    # Excloure carregues "resum": KAIS en genera una versio amb 1 linia
-    # d'article 30000 (FARINA) per contractar el transportista, paral·lela a
-    # la carrega "detall" amb totes les comandes. Els operaris només volen
-    # veure la versio detall. Regla: la carrega és "resum" si TOTES les
-    # linies (resoltes via CPALBARA+SERIEALB com la resta de queries) son
-    # art_codi='30000'. Carregues sense cap linia no es filtren.
+    # Calculem `is_resum_candidate` per a cada carrega per al filtre per parell
+    # que aplicarem en Python despres del fetch (vegeu mes avall). Un candidat
+    # nomes s'amaga del resultat si AL MATEIX DIA hi ha una altra carrega amb
+    # el MATEIX kg_total (la versio "detall" paral·lela). Sense parell, es
+    # manté visible (evita falsos positius en clients monofarina).
     #
-    # IMPORTANT: usem la mateixa resolucio CPALBARA+SERIEALB que kg_total i
-    # exists_palletizable. Si nomes fem JOIN directe (l.sal_codigo =
-    # SUBSTRING(d.det_documento, 5, 2)) no trobem la linia art 30000 quan
-    # la sèrie del det_documento es diferent de la sèrie real de l'albara
-    # (cas pedido en una sèrie i albara en una altra via SERIEALB).
-    def _resum_branca(alias_d, alias_l, art_cond):
-        return f"""
-            EXISTS (
-                SELECT 1 FROM Detcargas {alias_d} WITH (NOLOCK)
-                CROSS APPLY (
-                    SELECT TOP 1 cp.sal_codigo
-                    FROM   CPALBARA cp WITH (NOLOCK)
-                    WHERE  cp.eje_ejercicio = SUBSTRING({alias_d}.det_documento, 1, 4)
-                      AND  cp.cpa_albara    = SUBSTRING({alias_d}.det_documento, 7, 7)
-                      AND  ( cp.sal_codigo = SUBSTRING({alias_d}.det_documento, 5, 2)
-                             OR EXISTS (
-                                 SELECT 1 FROM SERIEALB s WITH (NOLOCK)
-                                 WHERE  s.eje_ejercicio    = SUBSTRING({alias_d}.det_documento, 1, 4)
-                                   AND  s.sal_SerAlbDefPed = SUBSTRING({alias_d}.det_documento, 5, 2)
-                                   AND  s.sal_codigo       = cp.sal_codigo
-                             ) )
-                    ORDER BY
-                        CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
-                        COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
-                                              COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
-                        CASE WHEN cp.sal_codigo = SUBSTRING({alias_d}.det_documento, 5, 2) THEN 0 ELSE 1 END,
-                        cp.cpa_estat ASC
-                ) sal_resolt_{alias_d}
-                JOIN ALBLINIA {alias_l} WITH (NOLOCK)
-                  ON  {alias_l}.eje_ejercicio = SUBSTRING({alias_d}.det_documento, 1, 4)
-                  AND {alias_l}.sal_codigo    = sal_resolt_{alias_d}.sal_codigo
-                  AND {alias_l}.cpa_albara    = SUBSTRING({alias_d}.det_documento, 7, 7)
-                WHERE {alias_d}.eje_ejercicio = c.eje_ejercicio
-                  AND {alias_d}.sca_serie     = c.sca_serie
-                  AND {alias_d}.car_numero    = c.car_numero
-                  AND {alias_d}.det_tipo      IN ('A','P')
-                  AND {alias_l}.art_codi      {art_cond}
-            )
-        """
-
-    where_sql += f"""
-      AND NOT (
-          {_resum_branca('d_r', 'l_r', "= '30000'")}
-          AND NOT {_resum_branca('d_r2', 'l_r2', "<> '30000'")}
-      )
+    # Condicions: num_comandes = 1 AND nomes linies art 30000 (JOIN directe).
+    # JOIN directe (no CPALBARA+SERIEALB) perque la resolucio per SERIEALB pot
+    # pujar les comandes PEDIDO del detall cap a una ALBARÀ-umbrella amb art
+    # 30000, fent que el detall sembli "tot art 30000" i sigui marcat com a
+    # resum candidat de manera incorrecta.
+    is_resum_candidate_sql = """
+        CAST(CASE WHEN (
+            (SELECT COUNT(DISTINCT d_rc0.det_documento)
+             FROM   Detcargas d_rc0 WITH (NOLOCK)
+             WHERE  d_rc0.eje_ejercicio = c.eje_ejercicio
+               AND  d_rc0.sca_serie     = c.sca_serie
+               AND  d_rc0.car_numero    = c.car_numero
+               AND  d_rc0.det_tipo      IN ('A','P')) = 1
+            AND EXISTS (
+                SELECT 1 FROM Detcargas d_rc WITH (NOLOCK)
+                JOIN ALBLINIA l_rc WITH (NOLOCK)
+                  ON  l_rc.eje_ejercicio = SUBSTRING(d_rc.det_documento, 1, 4)
+                  AND l_rc.sal_codigo    = SUBSTRING(d_rc.det_documento, 5, 2)
+                  AND l_rc.cpa_albara    = SUBSTRING(d_rc.det_documento, 7, 7)
+                WHERE d_rc.eje_ejercicio = c.eje_ejercicio
+                  AND d_rc.sca_serie     = c.sca_serie
+                  AND d_rc.car_numero    = c.car_numero
+                  AND d_rc.det_tipo      IN ('A','P')
+                  AND l_rc.art_codi      = '30000')
+            AND NOT EXISTS (
+                SELECT 1 FROM Detcargas d_rc2 WITH (NOLOCK)
+                JOIN ALBLINIA l_rc2 WITH (NOLOCK)
+                  ON  l_rc2.eje_ejercicio = SUBSTRING(d_rc2.det_documento, 1, 4)
+                  AND l_rc2.sal_codigo    = SUBSTRING(d_rc2.det_documento, 5, 2)
+                  AND l_rc2.cpa_albara    = SUBSTRING(d_rc2.det_documento, 7, 7)
+                WHERE d_rc2.eje_ejercicio = c.eje_ejercicio
+                  AND d_rc2.sca_serie     = c.sca_serie
+                  AND d_rc2.car_numero    = c.car_numero
+                  AND d_rc2.det_tipo      IN ('A','P')
+                  AND l_rc2.art_codi      <> '30000')
+        ) THEN 1 ELSE 0 END AS BIT)
     """
 
     # Suma de kg per càrrega — fórmula alineada amb com KAIS imprimeix la
@@ -373,7 +363,8 @@ def llistar_carregues(
                CAST(CASE WHEN """ + exists_palletizable_sql + """ THEN 1 ELSE 0 END AS BIT) AS palletitzable,
                CAST(CASE WHEN """ + exists_granel_sql + """ THEN 1 ELSE 0 END AS BIT) AS is_granel,
                """ + kg_total_sql + """ AS kg_total,
-               """ + num_comandes_sql + """ AS num_comandes
+               """ + num_comandes_sql + """ AS num_comandes,
+               """ + is_resum_candidate_sql + """ AS is_resum_candidate
         FROM   Cargas c WITH (NOLOCK)
         LEFT JOIN TRANS t WITH (NOLOCK) ON t.tra_codi = c.tra_codi
     """ + where_sql + """
@@ -417,9 +408,33 @@ def llistar_carregues(
             "is_granel": bool(r.is_granel),
             "kg_total": float(r.kg_total) if r.kg_total is not None else 0.0,
             "num_comandes": int(r.num_comandes) if r.num_comandes is not None else 0,
+            "_is_resum_candidate": bool(r.is_resum_candidate),
         }
         for r in rows
     ]
+
+    # Filtre resum per parell: si al mateix dia hi ha dues (o mes) carregues
+    # amb el mateix kg_total i una d'elles te nomes 1 linia art 30000 (es a
+    # dir, _is_resum_candidate=True), l'amaguem. Sense parell, no es filtra
+    # res — aixi evitem amagar carregues legitimes mono-FARINA.
+    from collections import defaultdict
+    buckets: dict = defaultdict(list)
+    for it in items:
+        data = it["car_fecsalida"] or it["car_fecha"]
+        kg = round(it["kg_total"] or 0.0, 1)
+        buckets[(data, kg)].append(it)
+    ids_amagar = set()
+    for grup in buckets.values():
+        if len(grup) >= 2:
+            for it in grup:
+                if it.get("_is_resum_candidate"):
+                    ids_amagar.add(it["carrega_id"])
+    if ids_amagar:
+        items = [it for it in items if it["carrega_id"] not in ids_amagar]
+        total = max(int(total) - len(ids_amagar), 0)
+    # Netegem el flag intern abans de retornar al client
+    for it in items:
+        it.pop("_is_resum_candidate", None)
     return {"items": items, "total": int(total), "limit": limit, "offset": offset}
 
 

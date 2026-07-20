@@ -114,3 +114,48 @@ def test_no_filtre_si_parell_pero_kgs_diferents(monkeypatch):
     assert len(res["items"]) == 2, (
         "Kgs diferents -> no son parell de duplicat -> ambdues visibles."
     )
+
+
+class _FakeConnAmbParams:
+    """Variant de _FakeConn que captura tambe els params de cada execute."""
+    def __init__(self, items_rows):
+        self._items = items_rows
+        self.executed: list[tuple[str, tuple]] = []
+
+    def execute(self, sql, *params):
+        self.executed.append((sql, params))
+        captured = self._items
+        class C:
+            def fetchone(self_):
+                return type("Row", (), {"n": len(captured)})()
+            def fetchall(self_):
+                return captured
+        return C()
+
+    def close(self): pass
+
+
+def test_where_sql_exclou_tra_codi_199(monkeypatch):
+    """El WHERE de llistar_carregues ha d'incloure NOT IN amb el codi 199.
+
+    Regressio: aixo garanteix que les carregues "duplicades" de facturacio
+    interna (tra_codi=199 a Farinera Coromina) no arriben mai al resultat, ni
+    tan sols si KAIS les retornaria — el filtre s'aplica a SQL abans del
+    OFFSET/FETCH, aixi que la paginacio del Power BI tambe queda coberta.
+    """
+    import consultes_carregues
+    fake = _FakeConnAmbParams([])
+    monkeypatch.setattr(consultes_carregues, "connectar", lambda: fake)
+    consultes_carregues.llistar_carregues("2026-06-01", "2026-06-30")
+
+    # Tant el sql_count com el sql_items comparteixen where_sql.
+    assert len(fake.executed) == 2, "Esperem dues execute (count + items)."
+    for sql, params in fake.executed:
+        assert "RTRIM(c.tra_codi) NOT IN" in sql, (
+            f"El WHERE ha d'excloure els codis duplicats. SQL: {sql[:400]}"
+        )
+        assert "199" in params, (
+            f"El codi 199 ha d'anar com a param, no interpolat. Params: {params}"
+        )
+
+

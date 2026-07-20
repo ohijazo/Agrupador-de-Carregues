@@ -29,6 +29,12 @@ _CONN_STR = (
     f"ApplicationIntent=ReadOnly;"
 )
 
+# Codis de transport KAIS que representen carregues "duplicades" de facturacio
+# interna (mateixa mercaderia que una altra carrega real). Inflen artificialment
+# el total de kg del resum i no han d'apareixer enlloc. Farinera Coromina,
+# 2026-07: codi 199 detectat. Afegir aqui si n'apareixen de nous.
+_TRA_CODIS_EXCLOSOS: frozenset[str] = frozenset({"199"})
+
 
 def connectar():
     conn = pyodbc.connect(_CONN_STR, timeout=10, autocommit=True)
@@ -224,6 +230,12 @@ def llistar_carregues(
           )
         """
         where_params.append(art_codi)
+    if _TRA_CODIS_EXCLOSOS:
+        placeholders = ",".join(["?"] * len(_TRA_CODIS_EXCLOSOS))
+        where_sql += (
+            f" AND (c.tra_codi IS NULL OR RTRIM(c.tra_codi) NOT IN ({placeholders}))"
+        )
+        where_params.extend(sorted(_TRA_CODIS_EXCLOSOS))
 
     # Calculem `is_resum_candidate` per a cada carrega per al filtre per parell
     # que aplicarem en Python despres del fetch (vegeu mes avall). Un candidat

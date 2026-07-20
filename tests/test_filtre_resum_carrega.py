@@ -159,3 +159,58 @@ def test_where_sql_exclou_tra_codi_199(monkeypatch):
         )
 
 
+def test_where_sql_no_te_bug_precedencia_or(monkeypatch):
+    """Regressio bug produccio: el WHERE base te branques `car_fecsalida OR
+    car_fecllegada`. Sense parentesis externs, qualsevol `AND` afegit despres
+    (tra_codis, estat, art_codi, _TRA_CODIS_EXCLOSOS) s'aplica NOMES a la
+    segona branca per precedencia SQL (AND > OR), i les carregues capturades
+    per la primera branca escapen el filtre.
+
+    Cas real: 2026/01/0002736 amb tra_codi=199 i car_fecsalida=2026-07-20
+    apareixia al calendari perque la primera branca (car_fecsalida in range)
+    la matchava i el `AND NOT IN (199)` no s'evaluava per aquesta fila.
+
+    Aquest test comprova que el `NOT IN` esta al nivell top del WHERE (i.e.,
+    profunditat de parentesi zero relativa a WHERE), no niat dins de l'OR.
+    """
+    import consultes_carregues
+    fake = _FakeConnAmbParams([])
+    monkeypatch.setattr(consultes_carregues, "connectar", lambda: fake)
+    consultes_carregues.llistar_carregues("2026-06-01", "2026-06-30")
+
+    for sql, _params in fake.executed:
+        # El SELECT de items conte WHERE dins de subqueries (kg_total_sql,
+        # is_resum_candidate_sql). El WHERE outer que ens interessa es el que
+        # va just abans del bloc base amb `COALESCE(c.car_fecsalida...)`.
+        i_base_cond = sql.index("COALESCE(c.car_fecsalida, c.car_fecha)")
+        i_where = sql.upper().rindex("WHERE", 0, i_base_cond)
+        i_not_in = sql.index("RTRIM(c.tra_codi) NOT IN")
+
+        # Just despres de WHERE, saltant espais, el primer char ha de ser '('.
+        j = i_where + 5
+        while j < len(sql) and sql[j].isspace():
+            j += 1
+        assert sql[j] == "(", (
+            f"El WHERE base ha de comencar amb '(' per envoltar l'OR de dates. "
+            f"Primer char no-blanc despres de WHERE: {sql[j]!r}. "
+            f"Sense aquest paren, els AND posteriors nomes s'apliquen a la "
+            f"segona branca del OR (bug de precedencia)."
+        )
+        # Trobar el parentesi que tanca aquest bloc base.
+        depth = 1
+        k = j + 1
+        while k < len(sql) and depth > 0:
+            if sql[k] == "(":
+                depth += 1
+            elif sql[k] == ")":
+                depth -= 1
+            k += 1
+        # El filtre NOT IN ha d'estar despres del ')' que tanca el bloc base.
+        assert i_not_in > k, (
+            "Bug de precedencia OR/AND: el NOT IN esta dins del bloc OR base "
+            f"(NOT IN a pos {i_not_in}, tancament del bloc base a pos {k}). "
+            "Cal envoltar totes les branques OR amb parentesis externs perque "
+            "els AND (tra_codis, estat, art_codi, EXCLOSOS) s'apliquin a totes."
+        )
+
+

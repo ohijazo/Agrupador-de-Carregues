@@ -191,19 +191,28 @@ def llistar_carregues(
     # cal retornar-les també si la seva car_fecllegada cau al rang, encara que
     # la car_fecsalida sigui fora. Aquesta segona branca s'aplica només per
     # aquests transportistes, sinó alteraríem el comportament d'altres rutes.
+    # IMPORTANT: envoltem tota la clausula base amb parentesis externs. Sense
+    # ells, qualsevol `AND` afegit despres (tra_codis, estat, art_codi,
+    # _TRA_CODIS_EXCLOSOS) s'aplica NOMES a la segona branca del OR per
+    # precedencia d'operadors SQL (AND > OR). Cas real: 2026/01/0002736 amb
+    # tra_codi=199 escapava el filtre d'exclusio perque la seva car_fecsalida
+    # queia al rang (primera branca), i el `AND NOT IN (199)` afegit al final
+    # quedava associat nomes a la branca de car_fecllegada.
     where_sql = """
-        WHERE  (
-                    COALESCE(c.car_fecsalida, c.car_fecha) >= ?
-                AND COALESCE(c.car_fecsalida, c.car_fecha) <  ?
-               )
-           OR  (
-                    c.car_fecllegada >= ?
-                AND c.car_fecllegada <  ?
-                AND (
-                        t.tra_nom LIKE 'AGRI%'
-                     OR t.tra_nom LIKE 'M% SOLEDAD LOPEZ%'
-                    )
-               )
+        WHERE (
+                (
+                        COALESCE(c.car_fecsalida, c.car_fecha) >= ?
+                    AND COALESCE(c.car_fecsalida, c.car_fecha) <  ?
+                )
+             OR (
+                        c.car_fecllegada >= ?
+                    AND c.car_fecllegada <  ?
+                    AND (
+                            t.tra_nom LIKE 'AGRI%'
+                         OR t.tra_nom LIKE 'M% SOLEDAD LOPEZ%'
+                        )
+                )
+        )
     """
     where_params: list = [desde_d, fins_d, desde_d, fins_d]
     if tra_codis:

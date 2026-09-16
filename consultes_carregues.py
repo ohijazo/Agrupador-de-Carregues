@@ -36,6 +36,60 @@ _CONN_STR = (
 _TRA_CODIS_EXCLOSOS: frozenset[str] = frozenset({"199"})
 
 
+def _pedido_ja_servit_exists_sql(alias: str) -> str:
+    """`EXISTS (...)` cert quan el document `alias` (un pedido de Detcargas) ja
+    esta materialitzat en un o mes albarans de la MATEIXA carrega.
+
+    KAIS no esborra el pedido de Detcargas quan el converteix en albara: els
+    dos conviuen a la carrega i la mercaderia es compta dues vegades. El vincle
+    fiable es `ALBLINIA.Lin_P_Serie` / `Lin_P_Numero` de les linies de l'albara,
+    que apunten al (serie, numero) del pedido d'origen.
+
+    Cas real (Farinera Coromina, 2026-09): carrega 2026/01/0003498
+    ESCAPA-PAL-SALZADELA, pedido 06/0000375 (982 sacs) + albarans 06/0000389
+    (939 sacs) i 06/0000391 (40 sacs). El pedido te lin_unit_ser=979 = 939+40,
+    aixi que la carrega sumava 48.475 kg en lloc dels 24.200 reals.
+
+    La restriccio de serie de `l_ps` (match directe O via SERIEALB) es la
+    mateixa d'`exists_palletizable_sql`: sense ella podriem enganxar linies d'un
+    document diferent amb el mateix numero en una altra serie (vegeu el
+    comentari de `exists_granel_sql`). Els alies porten sufix `_ps` per no
+    ombrejar els de la query contenidora.
+    """
+    return f"""EXISTS (
+                    SELECT 1
+                    FROM   Detcargas d_ps WITH (NOLOCK)
+                    JOIN   ALBLINIA  l_ps WITH (NOLOCK)
+                           ON  l_ps.eje_ejercicio = SUBSTRING(d_ps.det_documento, 1, 4)
+                           AND l_ps.cpa_albara    = SUBSTRING(d_ps.det_documento, 7, 7)
+                           AND ( l_ps.sal_codigo = SUBSTRING(d_ps.det_documento, 5, 2)
+                                 OR EXISTS (
+                                     SELECT 1 FROM SERIEALB s_ps WITH (NOLOCK)
+                                     WHERE  s_ps.eje_ejercicio    = l_ps.eje_ejercicio
+                                       AND  s_ps.sal_SerAlbDefPed = SUBSTRING(d_ps.det_documento, 5, 2)
+                                       AND  s_ps.sal_codigo       = l_ps.sal_codigo
+                                 ) )
+                    WHERE  d_ps.eje_ejercicio = {alias}.eje_ejercicio
+                      AND  d_ps.sca_serie     = {alias}.sca_serie
+                      AND  d_ps.car_numero    = {alias}.car_numero
+                      AND  d_ps.det_tipo      = 'A'
+                      AND  RTRIM(l_ps.Lin_P_Serie)  = SUBSTRING({alias}.det_documento, 5, 2)
+                      AND  RTRIM(l_ps.Lin_P_Numero) = SUBSTRING({alias}.det_documento, 7, 7)
+                )"""
+
+
+def _exclou_pedido_ja_servit_sql(alias: str) -> str:
+    """Fragment `AND NOT (...)` per enganxar despres de cada
+    `det_tipo IN ('A','P')`. Descarta els pedidos ja servits per albarans de la
+    mateixa carrega (vegeu `_pedido_ja_servit_exists_sql`).
+
+    Igual que `_TRA_CODIS_EXCLOSOS`, el filtre viu al SQL perque tots els
+    consumidors (calendari, llistat, detall, agrupacio, Power BI) quedin
+    coberts sense repetir la regla a Python.
+    """
+    return f"""AND NOT ( {alias}.det_tipo = 'P' AND {_pedido_ja_servit_exists_sql(alias)} )"""
+
+
 def connectar():
     conn = pyodbc.connect(_CONN_STR, timeout=10, autocommit=True)
     conn.timeout = 15
@@ -139,6 +193,7 @@ def llistar_carregues(
               AND  d.sca_serie     = c.sca_serie
               AND  d.car_numero    = c.car_numero
               AND  d.det_tipo      IN ('A', 'P')
+              """ + _exclou_pedido_ja_servit_sql("d") + """
               AND  l.lin_unit      > 0
               AND  RTRIM(a.art_descunit) NOT IN ('UNI', 'GRA')
         )
@@ -181,6 +236,7 @@ def llistar_carregues(
               AND  d.sca_serie     = c.sca_serie
               AND  d.car_numero    = c.car_numero
               AND  d.det_tipo      IN ('A', 'P')
+              """ + _exclou_pedido_ja_servit_sql("d") + """
               AND  RTRIM(a.art_descunit) = 'GRA'
               AND  l.lin_quan      > 0
         )
@@ -235,6 +291,7 @@ def llistar_carregues(
                 AND d2.sca_serie     = c.sca_serie
                 AND d2.car_numero    = c.car_numero
                 AND d2.det_tipo      IN ('A','P')
+                """ + _exclou_pedido_ja_servit_sql("d2") + """
                 AND l.art_codi       = ?
           )
         """
@@ -264,7 +321,8 @@ def llistar_carregues(
              WHERE  d_rc0.eje_ejercicio = c.eje_ejercicio
                AND  d_rc0.sca_serie     = c.sca_serie
                AND  d_rc0.car_numero    = c.car_numero
-               AND  d_rc0.det_tipo      IN ('A','P')) = 1
+               AND  d_rc0.det_tipo      IN ('A','P')
+               """ + _exclou_pedido_ja_servit_sql("d_rc0") + """) = 1
             AND EXISTS (
                 SELECT 1 FROM Detcargas d_rc WITH (NOLOCK)
                 JOIN ALBLINIA l_rc WITH (NOLOCK)
@@ -275,6 +333,7 @@ def llistar_carregues(
                   AND d_rc.sca_serie     = c.sca_serie
                   AND d_rc.car_numero    = c.car_numero
                   AND d_rc.det_tipo      IN ('A','P')
+                  """ + _exclou_pedido_ja_servit_sql("d_rc") + """
                   AND l_rc.art_codi      = '30000')
             AND NOT EXISTS (
                 SELECT 1 FROM Detcargas d_rc2 WITH (NOLOCK)
@@ -286,6 +345,7 @@ def llistar_carregues(
                   AND d_rc2.sca_serie     = c.sca_serie
                   AND d_rc2.car_numero    = c.car_numero
                   AND d_rc2.det_tipo      IN ('A','P')
+                  """ + _exclou_pedido_ja_servit_sql("d_rc2") + """
                   AND l_rc2.art_codi      <> '30000')
         ) THEN 1 ELSE 0 END AS BIT)
     """
@@ -348,6 +408,7 @@ def llistar_carregues(
               AND  d2.sca_serie     = c.sca_serie
               AND  d2.car_numero    = c.car_numero
               AND  d2.det_tipo      IN ('A', 'P')
+              """ + _exclou_pedido_ja_servit_sql("d2") + """
               AND  ( l.lin_unit > 0 OR l.lin_quan > 0 )
         ), 0)
     """
@@ -362,6 +423,7 @@ def llistar_carregues(
               AND  d3.sca_serie     = c.sca_serie
               AND  d3.car_numero    = c.car_numero
               AND  d3.det_tipo      IN ('A','P')
+              """ + _exclou_pedido_ja_servit_sql("d3") + """
         ), 0)
     """
 
@@ -562,19 +624,34 @@ def llistar_transportistes() -> list[dict]:
     return [{"tra_codi": r.tra_codi, "tra_nom": r.tra_nom or ""} for r in rows]
 
 
-def obtenir_comandes_carrega(eje: str, sca: str, car: str) -> list[dict]:
+def obtenir_comandes_carrega(
+    eje: str, sca: str, car: str, incloure_pedidos_servits: bool = False
+) -> list[dict]:
     """Q2: Comandes (Detcargas tipus 'A' o 'P') d'una càrrega.
 
     det_documento (varchar(13)) = eje(4) + sal_codigo(2) + cpa_albara(7).
     Format consistent per als dos tipus: 'A' i 'P' es passen igual a motor.calcular_embalatges()
     perquè aquesta consulta CPALBARA, que inclou ambdós estats.
+
+    Per defecte DESCARTA els pedidos ('P') que ja estan materialitzats en
+    albarans ('A') de la mateixa càrrega — KAIS no els esborra de Detcargas i
+    la mercaderia es comptaria dues vegades (vegeu
+    `_pedido_ja_servit_exists_sql`). És el coll d'ampolla de `resum_carrega`,
+    `agregador.agrupar` i `debug_resolucio_sal`, així que filtrant aquí els tres
+    queden coberts.
+
+    `incloure_pedidos_servits=True` els manté a la llista; cada element porta
+    sempre `pedido_servit: bool` per poder-los distingir al diagnòstic.
     """
     sql = """
         SELECT SUBSTRING(d.det_documento, 1, 4) AS eje_doc,
                SUBSTRING(d.det_documento, 5, 2) AS sal_codigo,
                SUBSTRING(d.det_documento, 7, 7) AS cpa_albara,
                d.det_tipo,
-               d.det_ordencarga
+               d.det_ordencarga,
+               CAST(CASE WHEN d.det_tipo = 'P'
+                          AND """ + _pedido_ja_servit_exists_sql("d") + """
+                         THEN 1 ELSE 0 END AS BIT) AS pedido_servit
         FROM   Detcargas d WITH (NOLOCK)
         WHERE  d.eje_ejercicio = ?
           AND  d.sca_serie     = ?
@@ -593,8 +670,10 @@ def obtenir_comandes_carrega(eje: str, sca: str, car: str) -> list[dict]:
             "sal_codigo":    r.sal_codigo,
             "cpa_albara":    r.cpa_albara,
             "det_tipo":      r.det_tipo,
+            "pedido_servit": bool(r.pedido_servit),
         }
         for r in rows
+        if incloure_pedidos_servits or not r.pedido_servit
     ]
 
 
@@ -845,7 +924,10 @@ def debug_resolucio_sal(eje: str, sca: str, car: str) -> dict:
     cada comanda d'una càrrega, perquè la persona usuària pugui veure per
     què `resum_carrega` ha triat una fila concreta i quines opcions hi havia.
     """
-    comandes = obtenir_comandes_carrega(eje, sca, car)
+    # El diagnostic ha de seguir veient els pedidos que `resum_carrega`
+    # descarta, marcats amb `pedido_servit`, per poder explicar per que un
+    # document ha desaparegut del detall.
+    comandes = obtenir_comandes_carrega(eje, sca, car, incloure_pedidos_servits=True)
 
     conn = connectar()
     try:
@@ -1001,6 +1083,7 @@ def debug_resolucio_sal(eje: str, sca: str, car: str) -> dict:
                 "sal_doc": sal_doc,
                 "alb_doc": alb_doc,
                 "det_tipo": a["det_tipo"],
+                "pedido_servit": a.get("pedido_servit", False),
                 "cpalbara_candidats": cpalbara_candidats,
                 "seriealb_mappings": seriealb_mappings,
                 "alblinia_per_sal": alblinia_per_sal,

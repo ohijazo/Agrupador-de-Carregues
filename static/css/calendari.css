@@ -718,7 +718,8 @@
     color: #fff;
 }
 
-/* Bloc rang=3 — alerta capacitat: 1 sola comanda i > 17.000 kg.
+/* Bloc rang=3 — alerta capacitat: 1 sola comanda i > 17.000 kg,
+   o qualsevol càrrega > 24.000 kg.
    To groc/mostassa viu — clarament diferenciat de granel (verd), AGRI
    (vermell) i Mª Soledad (lila). */
 .cal-evt[data-rang="3"]:not(.is-no-palletitzable):not([data-tipus="granel"]) {

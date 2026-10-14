@@ -63,7 +63,7 @@
     //   0 = GRA (granel)
     //   1 = AGRI
     //   2 = Mª Soledad López
-    //   3 = alerta capacitat (1 sola comanda i > 17.000 kg)
+    //   3 = alerta capacitat (1 sola comanda i > 17.000 kg, o > 24.000 kg)
     //   4 = transport 201 / 194
     //   5 = transport 199
     //   6 = resta
@@ -78,7 +78,8 @@
         // sola comanda): aquest transportista ja gestiona aquest cas com a
         // habitual i no s'ha de mostrar com a alerta.
         if (traCodi === "199") return 5;
-        if ((Number(c.num_comandes) || 0) === 1 && kgDeCarrega(c) > 17000) return 3;
+        const kg = kgDeCarrega(c);
+        if (((Number(c.num_comandes) || 0) === 1 && kg > 17000) || kg > 24000) return 3;
         if (traCodi === "201" || traCodi === "194") return 4;
         return 6;
     }

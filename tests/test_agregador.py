@@ -184,3 +184,51 @@ def test_agrupar_cache_comanda_reutilitza_resultat():
         from agregador import agrupar
         agrupar([_carrega("2026/01/0000001"), _carrega("2026/01/0000002")])
     assert len(crides) == 1
+
+
+def test_agrupar_no_calculable_recalcula_forcat():
+    """NO_CALCULABLE (p.ex. RF3 comanda mínima producció) → es recalcula amb
+    forcar=True, els productes entren i queda un avís amb el motiu.
+    Cas real 2026/01/0004144: FORN EBRE 01/0007906, 975 kg < mínim 1000 kg."""
+    fake_motor = _setup_fake_motor()
+    crides = []
+
+    def motor(sal, cpa, forcar=False, **kw):
+        crides.append(forcar)
+        if not forcar:
+            r = FakeResultat(embalatges=[], estat=FakeEstat("NO_CALCULABLE"))
+            r.missatges = ["RF3 STOP: falten 25.0 kg"]
+            return r
+        return FakeResultat(
+            embalatges=[FakeEmbalatge(contingut=[FakeContingut("31791", "ESPECIF FORN EBRE", sacs=39)])],
+            linies=[FakeLinia("31791", "ESPECIF FORN EBRE", "S25")],
+            estat=FakeEstat("FORCAT"),
+        )
+    fake_motor.calcular_embalatges = motor
+    with patch("agregador.obtenir_comandes_carrega", return_value=[
+        {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0007906", "det_tipo": "P"}
+    ]):
+        from agregador import agrupar
+        r = agrupar([_carrega()])
+    assert crides == [False, True]
+    assert [p.art_codi for p in r.productes] == ["31791"]
+    assert r.productes[0].total_sacs == 39
+    assert len(r.incidencies) == 1
+    assert r.incidencies[0].tipus == "warning"
+    assert "Calculat forçat" in r.incidencies[0].missatge
+    assert "RF3" in r.incidencies[0].missatge
+
+
+def test_agrupar_no_calculable_ni_forcat_queda_incidencia():
+    """Si ni forçant hi ha embalatges (granel/UNI), es manté l'avís de sempre."""
+    fake_motor = _setup_fake_motor()
+    fake_motor.calcular_embalatges = lambda sal, cpa, **kw: FakeResultat(
+        embalatges=[], estat=FakeEstat("NO_CALCULABLE"))
+    with patch("agregador.obtenir_comandes_carrega", return_value=[
+        {"eje_ejercicio": "2026", "sal_codigo": "01", "cpa_albara": "0000100", "det_tipo": "A"}
+    ]):
+        from agregador import agrupar
+        r = agrupar([_carrega()])
+    assert r.productes == []
+    assert len(r.incidencies) == 1
+    assert "Sense embalatges calculables" in r.incidencies[0].missatge

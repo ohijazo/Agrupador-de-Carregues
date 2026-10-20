@@ -28,6 +28,14 @@ def _pes_per_tunitat(tunitat: str) -> float:
     return 0.0
 
 
+def _es_no_calculable(res: Any) -> bool:
+    """Cert si el motor ha aturat el càlcul (estat NO_CALCULABLE, sense embalatges)."""
+    if res is None or getattr(res, "embalatges", None):
+        return False
+    estat = getattr(res, "estat", None)
+    return getattr(estat, "value", estat) == "NO_CALCULABLE"
+
+
 def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
     """Agrupa N càrregues en un únic resultat consolidat per producte.
 
@@ -42,7 +50,8 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
     resultat = ResultatAgrupacio()
 
     # Cache de comandes (eje, sal, cpa, tra, data) per evitar recalcular si surt 2 cops.
-    cache_comanda: dict[tuple[str, str, str, str, str], Any] = {}
+    # Valor: (resultat del motor, avís de càlcul forçat o None).
+    cache_comanda: dict[tuple[str, str, str, str, str], tuple[Any, str | None]] = {}
 
     # Estructura intermèdia: (art_codi) -> {
     #     "descrip", "tunitat",
@@ -96,15 +105,30 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
             key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"], tra_codi, data_carrega or "")
             try:
                 if key in cache_comanda:
-                    res = cache_comanda[key]
+                    res, avis_forcat = cache_comanda[key]
                 else:
-                    res = calcular_embalatges(
-                        a["sal_codigo"], a["cpa_albara"],
+                    kwargs = dict(
                         tra_codi_carrega=tra_codi,
                         eje_ejercicio=a["eje_ejercicio"],
                         data_carrega=data_carrega,
                     )
-                    cache_comanda[key] = res
+                    res = calcular_embalatges(a["sal_codigo"], a["cpa_albara"], **kwargs)
+                    avis_forcat = None
+                    # NO_CALCULABLE ve de validacions comercials del motor (RF1
+                    # STOP, RF3 comanda mínima producció, RF4 dimensions). Si la
+                    # comanda ja és dins una càrrega que surt, el magatzem l'ha
+                    # de preparar igualment: recalculem forçat i ho deixem com a
+                    # avís. Cas 2026/01/0004144 (20/10/2026): FORN EBRE 01/0007906
+                    # amb 975 kg de 31791 < mínim 1000 kg desapareixia de la fulla.
+                    if _es_no_calculable(res):
+                        res_forcat = calcular_embalatges(
+                            a["sal_codigo"], a["cpa_albara"], forcar=True, **kwargs
+                        )
+                        if res_forcat is not None and getattr(res_forcat, "embalatges", None):
+                            motius = "; ".join(getattr(res, "missatges", None) or []) or "NO_CALCULABLE"
+                            avis_forcat = f"Calculat forçat: {motius}"
+                            res = res_forcat
+                    cache_comanda[key] = (res, avis_forcat)
             except (TypeError, AttributeError, NameError, ImportError):
                 # Bugs de codi (no de dades): no els ofeguem com a incidència
                 # silenciosa. Que l'endpoint torni 500 perquè es vegi al log
@@ -133,6 +157,14 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                     missatge=f"Sense embalatges calculables (estat: {estat_str}).",
                 ))
                 continue
+
+            if avis_forcat:
+                resultat.incidencies.append(Incidencia(
+                    carrega_id=c["carrega_id"],
+                    comanda=f"{a['sal_codigo']}/{a['cpa_albara']}",
+                    tipus="warning",
+                    missatge=avis_forcat,
+                ))
 
             # Mapa art_codi -> descripció / tunitat / pes_per_sac des de línies
             info_articles: dict[str, dict] = {}

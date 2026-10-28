@@ -20,7 +20,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from consultes_carregues import connectar
+from consultes_carregues import _ordre_resolucio_sal_sql, connectar
 
 
 SQL_HEAD = """
@@ -74,11 +74,13 @@ OUTER APPLY (
                       WHERE s.eje_ejercicio    = SUBSTRING(d.det_documento, 1, 4)
                         AND s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
                         AND s.sal_codigo       = cp.sal_codigo))
-    ORDER BY CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
-             COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
-                                  COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
-             CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END,
-             cp.cpa_estat ASC
+    ORDER BY """ + _ordre_resolucio_sal_sql(
+    tra_carrega="RTRIM(c.tra_codi)",
+    data_sortida="COALESCE(c.car_fecsalida, c.car_fecha)",
+    data_ref="COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha)",
+    det_tipo="d.det_tipo",
+    sal_doc="SUBSTRING(d.det_documento, 5, 2)",
+) + """
 ) sal_resolt
 LEFT JOIN ALBLINIA l WITH (NOLOCK)
   ON l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)

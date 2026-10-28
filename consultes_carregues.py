@@ -90,6 +90,44 @@ def _exclou_pedido_ja_servit_sql(alias: str) -> str:
     return f"""AND NOT ( {alias}.det_tipo = 'P' AND {_pedido_ja_servit_exists_sql(alias)} )"""
 
 
+def _ordre_resolucio_sal_sql(
+    *, tra_carrega: str, data_sortida: str, data_ref: str, det_tipo: str, sal_doc: str
+) -> str:
+    """Cos de l'`ORDER BY` que tria, entre els candidats CPALBARA d'un
+    det_documento, quina és la comanda real (alias `cp`). Els arguments són
+    expressions SQL de la query contenidora.
+
+    Prioritat:
+      1) `tra_codi` coincident amb el de la càrrega.
+      2) Proximitat de `cpa_fechaservir` a la data de SORTIDA o a la de
+         referència (arribada → sortida → genèrica), la que quedi més a prop.
+         Abans només es mirava la d'arribada, i en rutes de trànsit llarg
+         guanyava un albarà homònim d'un altre client. Cas 2026/01/0004245
+         ESCAPA PAL OSLE (surt 28/10, arriba 3/11): 01/0007748 PANADERIA OSLE
+         (servir 28/10) perdia contra 51/0007748 URBAN SPICES (servir 2/11).
+      3) En empat, si el document és un albarà (det_tipo 'A'), la seva sèrie
+         directa. Casos SALZADELA 0003498/0003499, EUROGERM 0001798.
+      4) Proximitat a la data de referència sola (criteri antic): per als
+         pedidos ('P') en empat, conserva la tria validada (RYMOT 0004279,
+         on la sèrie directa és un albarà d'una altra càrrega).
+      5) Match directe per `sal_codigo`.
+      6) `cpa_estat` (pendent primer).
+
+    El motor germà (`preparacioComandesVenda/consultes.py:_buscar_comanda_cpalbara`)
+    ha d'aplicar exactament la mateixa prioritat.
+    """
+    dist_sortida = f"ABS(DATEDIFF(day, cp.cpa_fechaservir, {data_sortida}))"
+    dist_ref = f"ABS(DATEDIFF(day, cp.cpa_fechaservir, {data_ref}))"
+    return f"""
+                    CASE WHEN RTRIM(cp.tra_codi) = {tra_carrega} THEN 0 ELSE 1 END,
+                    COALESCE(CASE WHEN {dist_sortida} <= {dist_ref} THEN {dist_sortida} ELSE {dist_ref} END,
+                             {dist_ref}, {dist_sortida}, 999999),
+                    CASE WHEN {det_tipo} = 'A' AND cp.sal_codigo = {sal_doc} THEN 0 ELSE 1 END,
+                    COALESCE({dist_ref}, 999999),
+                    CASE WHEN cp.sal_codigo = {sal_doc} THEN 0 ELSE 1 END,
+                    cp.cpa_estat ASC"""
+
+
 def connectar():
     conn = pyodbc.connect(_CONN_STR, timeout=10, autocommit=True)
     conn.timeout = 15
@@ -137,30 +175,26 @@ def llistar_carregues(
     # acceptem o sal directe o qualsevol sal mapejat via SERIEALB.
     # Resol primer la sal real (via CROSS APPLY amb CPALBARA) per evitar
     # caçar línies d'una comanda d'una altra sèrie amb el mateix número.
-    # PRIORITAT del CROSS APPLY (mateix patró als 4 llocs del mòdul):
-    # 1) SERIEALB inequívoc: si hi ha EXACTAMENT UN mapping pedido→albarà,
-    #    aquest mapping és definitiu — encara que també existeixi una fila
-    #    CPALBARA amb sal_codigo = sal_pedido (coincidència accidental d'un
-    #    número d'albarà compartit per molts clients).
-    #    Verificat amb NUTREX 2026/02/0000208 (mapping únic 02→52) i
-    #    SIGFREDO 2026/02/0000216 (mapping únic 08→58 amb tra_codi també
-    #    coincident a la fila errònia).
-    # 2) tra_codi coincident: desempata quan SERIEALB té múltiples mappings.
-    #    Verificat amb MATAS 2026/01/0002269 (sal_pedido=01 mapeja a molts;
-    #    cap mapping té tra_codi=154, així que cau al match directe LLAUSAS).
-    # 3) Coherència de dades de l'albarà: si alguna ALBLINIA té lin_unit*pes_per_sac
-    #    molt diferent de lin_quan (>50% de divergència, p.ex. cas 0002430 sal=56
-    #    amb 3501 sacs i lin_quan=8697 → 87525 vs 8697, 10x), és símptoma de
-    #    captura corrupta a KAIS. Despriorititzem aquests candidats.
-    # 4) Proximitat de cpa_fechaservir a la data de la càrrega.
-    # 5) Match directe per sal_codigo: fallback quan res anterior discrimina.
+    # PRIORITAT del CROSS APPLY: vegeu `_ordre_resolucio_sal_sql` (compartida
+    # pels 4 llocs del mòdul i pel motor germà).
     #
-    # Nota: prèviament hi havia una regla de "coherència de línies" que
-    # descartava albarans on lin_unit*pes_per_sac difereix de lin_quan en
-    # >50% (cas 0002430 amb 3501 sacs i 8697 kg, ratio 2.48 vs 25 esperat).
-    # Eliminat: KAIS imprimeix aquests albarans com a vàlids (article 30000
-    # FARINA té unitat S25 nominal però el pes per sac real és variable).
-    # La prioritat de lin_quan al càlcul de kg ja evita amplificar errors.
+    # Regles retirades (no tornar-les a afegir sense revisar els casos):
+    # - "SERIEALB inequívoc" (mapping únic pedido→albarà): massa restrictiva,
+    #   casos 0002426 i 0002431.
+    # - "Coherència de línies" (lin_unit*pes_per_sac vs lin_quan >50%): KAIS
+    #   imprimeix aquests albarans com a vàlids (article 30000 FARINA té unitat
+    #   S25 nominal però el pes per sac real és variable). La prioritat de
+    #   lin_quan al càlcul de kg ja evita amplificar errors.
+    _ordre_resolucio_sal_d, _ordre_resolucio_sal_d2 = (
+        _ordre_resolucio_sal_sql(
+            tra_carrega="RTRIM(c.tra_codi)",
+            data_sortida="COALESCE(c.car_fecsalida, c.car_fecha)",
+            data_ref="COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha)",
+            det_tipo=f"{alias}.det_tipo",
+            sal_doc=f"SUBSTRING({alias}.det_documento, 5, 2)",
+        )
+        for alias in ("d", "d2")
+    )
     exists_palletizable_sql = """
         EXISTS (
             SELECT 1
@@ -178,11 +212,7 @@ def llistar_carregues(
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
                 ORDER BY
-                    CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
-                    COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
-                                          COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
-                    CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END,
-                    cp.cpa_estat ASC
+""" + _ordre_resolucio_sal_d + """
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
@@ -219,13 +249,9 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat: vegeu comentari a `exists_palletizable_sql`.
+                -- Prioritat: vegeu `_ordre_resolucio_sal_sql`.
                 ORDER BY
-                    CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
-                    COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
-                                          COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
-                    CASE WHEN cp.sal_codigo = SUBSTRING(d.det_documento, 5, 2) THEN 0 ELSE 1 END,
-                    cp.cpa_estat ASC
+""" + _ordre_resolucio_sal_d + """
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d.det_documento, 1, 4)
@@ -391,13 +417,9 @@ def llistar_carregues(
                                AND  s.sal_SerAlbDefPed = SUBSTRING(d2.det_documento, 5, 2)
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat: vegeu comentari a `exists_palletizable_sql`.
+                -- Prioritat: vegeu `_ordre_resolucio_sal_sql`.
                 ORDER BY
-                    CASE WHEN RTRIM(cp.tra_codi) = RTRIM(c.tra_codi) THEN 0 ELSE 1 END,
-                    COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir,
-                                          COALESCE(c.car_fecllegada, c.car_fecsalida, c.car_fecha))), 999999),
-                    CASE WHEN cp.sal_codigo = SUBSTRING(d2.det_documento, 5, 2) THEN 0 ELSE 1 END,
-                    cp.cpa_estat ASC
+""" + _ordre_resolucio_sal_d2 + """
             ) sal_resolt
             JOIN   ALBLINIA  l   WITH (NOLOCK)
               ON  l.eje_ejercicio = SUBSTRING(d2.det_documento, 1, 4)
@@ -717,34 +739,40 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
     try:
         # Obté el tra_codi i les dates de la càrrega — claus per a discriminar
         # el sal_real quan hi ha múltiples candidats a CPALBARA amb el mateix
-        # número. La data de referència (car_fecllegada → car_fecsalida →
-        # car_fecha) es compara amb cpa_fechaservir de cada candidat.
+        # número. Les dates de sortida i de referència (car_fecllegada →
+        # car_fecsalida → car_fecha) es comparen amb cpa_fechaservir de cada
+        # candidat (vegeu `_ordre_resolucio_sal_sql`).
         tra_row = conn.execute(
             "SELECT RTRIM(tra_codi) AS tra_codi, "
+            "       COALESCE(car_fecsalida, car_fecha) AS data_sortida, "
             "       COALESCE(car_fecllegada, car_fecsalida, car_fecha) AS data_ref "
             "FROM Cargas WITH (NOLOCK) "
             "WHERE eje_ejercicio=? AND sca_serie=? AND car_numero=?",
             eje, sca, car,
         ).fetchone()
         carrega_tra_codi = (tra_row.tra_codi if tra_row else "") or ""
+        carrega_data_sortida = tra_row.data_sortida if tra_row else None
         carrega_data_ref = tra_row.data_ref if tra_row else None
 
         # Pas 1: resoldre la sèrie real (sal_real) per a cada comanda.
         # Detcargas codifica la sèrie del PEDIDO (sal_SerAlbDefPed); la comanda
         # real a CPALBARA/ALBLINIA pot tenir una sèrie diferent. SERIEALB és
         # la taula de mapeig, però per a un mateix sal_pedido pot haver-hi
-        # múltiples sal_real possibles. Per discriminar, prioritzem:
-        #   1) match de tra_codi amb el de la càrrega (la comanda real és del
-        #      mateix transportista que la càrrega).
-        #   2) sal directe (cas freqüent quan no hi ha mapping a SERIEALB).
-        claus_doc = [(a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"]) for a in comandes]
-        values_sql = ",".join(["(CAST(? AS varchar(4)), CAST(? AS varchar(2)), CAST(? AS varchar(7)))"] * len(claus_doc))
-        params_resolve: list = [carrega_tra_codi, carrega_data_ref]  # tra_codi, data_ref
+        # múltiples sal_real possibles. La prioritat és `_ordre_resolucio_sal_sql`.
+        claus_doc = [
+            (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"], a["det_tipo"]) for a in comandes
+        ]
+        values_sql = ",".join(
+            ["(CAST(? AS varchar(4)), CAST(? AS varchar(2)), CAST(? AS varchar(7)), CAST(? AS char(1)))"]
+            * len(claus_doc)
+        )
+        params_resolve: list = [carrega_tra_codi, carrega_data_sortida, carrega_data_ref]
         for k in claus_doc:
             params_resolve.extend(k)
 
         sql_resolve = f"""
             DECLARE @carrega_tra varchar(5) = RTRIM(?);
+            DECLARE @carrega_sortida datetime = ?;
             DECLARE @carrega_data datetime  = ?;
             SELECT d.eje_doc, d.sal_doc, d.alb_doc,
                    RTRIM(cp.sal_codigo) AS sal_real,
@@ -753,7 +781,7 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                    RTRIM(cv.adr_nom)    AS adr_nom,
                    RTRIM(cp.cpa_pobla)  AS cpa_pobla,
                    RTRIM(cv.adr_pobla)  AS cv_pobla
-            FROM (VALUES {values_sql}) AS d(eje_doc, sal_doc, alb_doc)
+            FROM (VALUES {values_sql}) AS d(eje_doc, sal_doc, alb_doc, det_tipo)
             OUTER APPLY (
                 SELECT TOP 1 cp.sal_codigo, cp.cli_codi, cp.adr_codi, cp.cpa_pobla
                 FROM   CPALBARA cp WITH (NOLOCK)
@@ -766,26 +794,13 @@ def resum_carrega(eje: str, sca: str, car: str) -> dict:
                                AND  s.sal_SerAlbDefPed = d.sal_doc
                                AND  s.sal_codigo       = cp.sal_codigo
                          ) )
-                -- Prioritat (vegeu també `exists_palletizable_sql`):
-                --   1) tra_codi coincident amb el de la càrrega.
-                --   2) Coherència de línies (lin_unit*pes_per_sac vs lin_quan):
-                --      despriorititza albarans amb dades corruptes (cas 0002430
-                --      sal=56 amb 3501 sacs i lin_quan=8697 → ratio 2.48 vs 25
-                --      esperat).
-                --   3) Proximitat de cpa_fechaservir a la data de referència de
-                --      la càrrega (car_fecllegada → car_fecsalida → car_fecha).
-                --      És el criteri principal: discrimina entre dos pending
-                --      del mateix tra (URBAN/0002423, RYMOT/0002417, BOIX/0002431,
-                --      FLECA CAL TIANA/0002426). NUTREX/SIGFREDO també OK perquè
-                --      la data de servir només coincideix amb el real.
-                --   4) Match directe per sal_codigo → fallback per casos sense
-                --      discriminació de data.
-                --   5) cpa_estat (pendent primer).
-                ORDER BY
-                    CASE WHEN RTRIM(cp.tra_codi) = @carrega_tra THEN 0 ELSE 1 END,
-                    COALESCE(ABS(DATEDIFF(day, cp.cpa_fechaservir, @carrega_data)), 999999),
-                    CASE WHEN cp.sal_codigo = d.sal_doc THEN 0 ELSE 1 END,
-                    cp.cpa_estat ASC
+                ORDER BY {_ordre_resolucio_sal_sql(
+                    tra_carrega="@carrega_tra",
+                    data_sortida="@carrega_sortida",
+                    data_ref="@carrega_data",
+                    det_tipo="d.det_tipo",
+                    sal_doc="d.sal_doc",
+                )}
             ) cp
             LEFT JOIN CLIENTS c WITH (NOLOCK) ON c.cli_codi = cp.cli_codi
             -- Direcció d'enviament (CLIENVIO): fallback per a `pobla` quan CPALBARA.cpa_pobla és buit.

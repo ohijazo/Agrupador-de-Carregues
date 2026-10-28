@@ -95,6 +95,9 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
         # Tipus: string "YYYY-MM-DD" — `consultes_carregues.py:349-353` serialitza
         # les dates amb strftime abans de retornar-les al payload.
         data_carrega: str | None = c.get("car_fecllegada") or c.get("car_fecsalida") or c.get("car_fecha")
+        # Data de sortida: el motor tria el candidat més proper a la sortida o a
+        # `data_carrega` (cas 2026/01/0004245 OSLE, trànsit de 6 dies).
+        data_sortida: str | None = c.get("car_fecsalida") or c.get("car_fecha")
 
         for a in comandes:
             tra_codi = c.get("tra_codi", "") or ""
@@ -102,7 +105,10 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
             # cargues amb tra/data diferents poden resoldre el mateix (eje,
             # sal, alb) a albarans diferents (cas 0004487: 0002389 → FORN CAP
             # VILA per data 25/06, 0002423 → URBAN SPICES per data 29/06).
-            key = (a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"], tra_codi, data_carrega or "")
+            key = (
+                a["eje_ejercicio"], a["sal_codigo"], a["cpa_albara"], a.get("det_tipo") or "",
+                tra_codi, data_carrega or "", data_sortida or "",
+            )
             try:
                 if key in cache_comanda:
                     res, avis_forcat = cache_comanda[key]
@@ -111,6 +117,8 @@ def agrupar(carregues_sel: list[dict]) -> ResultatAgrupacio:
                         tra_codi_carrega=tra_codi,
                         eje_ejercicio=a["eje_ejercicio"],
                         data_carrega=data_carrega,
+                        data_sortida=data_sortida,
+                        det_tipo=a.get("det_tipo"),
                     )
                     res = calcular_embalatges(a["sal_codigo"], a["cpa_albara"], **kwargs)
                     avis_forcat = None

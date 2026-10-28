@@ -182,7 +182,7 @@ def test_where_sql_no_te_bug_precedencia_or(monkeypatch):
         # El SELECT de items conte WHERE dins de subqueries (kg_total_sql,
         # is_resum_candidate_sql). El WHERE outer que ens interessa es el que
         # va just abans del bloc base amb `COALESCE(c.car_fecsalida...)`.
-        i_base_cond = sql.index("COALESCE(c.car_fecsalida, c.car_fecha)")
+        i_base_cond = sql.index("COALESCE(c.car_fecsalida, c.car_fecha) >= ?")
         i_where = sql.upper().rindex("WHERE", 0, i_base_cond)
         i_not_in = sql.index("RTRIM(c.tra_codi) NOT IN")
 

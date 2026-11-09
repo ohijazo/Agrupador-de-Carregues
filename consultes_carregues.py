@@ -110,7 +110,12 @@ def _ordre_resolucio_sal_sql(
       4) Proximitat a la data de referència sola (criteri antic): per als
          pedidos ('P') en empat, conserva la tria validada (RYMOT 0004279,
          on la sèrie directa és un albarà d'una altra càrrega).
-      5) Match directe per `sal_codigo`.
+      5) Sèrie segons el tipus de document: per als albarans ('A') la sèrie
+         directa; per als pedidos ('P') la sèrie de comandes mapejada via
+         SERIEALB (la directa és la d'albarans). Cas 2026/01/0004445 ESCAPA
+         PAL PRATS (pedido 06/0000485 → 56/0000485, 16.436 kg) que empatava
+         en tot amb l'albarà homònim 06/0000485 de la carrega 0004422 del
+         divendres (6.059 kg) i se'l quedava: carrega "duplicada".
       6) `cpa_estat` (pendent primer).
 
     El motor germà (`preparacioComandesVenda/consultes.py:_buscar_comanda_cpalbara`)
@@ -124,7 +129,9 @@ def _ordre_resolucio_sal_sql(
                              {dist_ref}, {dist_sortida}, 999999),
                     CASE WHEN {det_tipo} = 'A' AND cp.sal_codigo = {sal_doc} THEN 0 ELSE 1 END,
                     COALESCE({dist_ref}, 999999),
-                    CASE WHEN cp.sal_codigo = {sal_doc} THEN 0 ELSE 1 END,
+                    CASE WHEN {det_tipo} = 'P' AND cp.sal_codigo <> {sal_doc} THEN 0
+                         WHEN {det_tipo} <> 'P' AND cp.sal_codigo = {sal_doc} THEN 0
+                         ELSE 1 END,
                     cp.cpa_estat ASC"""
 
 

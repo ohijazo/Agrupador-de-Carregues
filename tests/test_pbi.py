@@ -76,6 +76,13 @@ def test_pbi_rate_limit_dispara_a_30(client_with_key, monkeypatch):
     # Reset del bucket per garantir comptador zero
     import app as app_module
     app_module._rate_buckets.clear()
+    # Sense KAIS: 30 consultes reals poden superar la finestra de 60 s i el
+    # bucket es buida abans de la 31a (test fals negatiu segons la carrega
+    # del servidor SQL).
+    monkeypatch.setattr(
+        app_module, "llistar_carregues",
+        lambda *a, **kw: {"items": [], "total": 0, "limit": 1000, "offset": 0},
+    )
     headers = {"X-Api-Key": "testkey123"}
     # Fem 30 peticions. Si SQL Server no respon, retorna 503 — però NO 429
     statuses = []

@@ -187,6 +187,44 @@ def secure_headers(resp):
     return resp
 
 
+# --- Migració a SAP: redirecció de l'app antiga -----------------------------
+# A partir de SAP_REDIRECT_DES_DE (per defecte 2026-11-23) les pàgines servides
+# amb el host antic (agrupacions.agrienergia.local) redirigeixen a la nova app
+# de SAP conservant ruta i querystring. Es filtra per host perquè la mateixa
+# base de codi pot córrer al host nou sense entrar en bucle. /api, /health i
+# /static no es redirigeixen per no trencar integracions (Power BI, monitoratge).
+# 302 (no 301) perquè els navegadors no la cachegin si cal fer marxa enrere.
+_SAP_REDIRECT_HOSTS = {
+    h.strip().lower()
+    for h in os.environ.get("SAP_REDIRECT_HOSTS", "agrupacions.agrienergia.local").split(",")
+    if h.strip()
+}
+_SAP_REDIRECT_URL = os.environ.get("SAP_REDIRECT_URL", "http://agrupacions-sap.agrienergia.local").rstrip("/")
+_SAP_REDIRECT_EXCLOSOS = ("/api/", "/health", "/static/")
+
+
+def _sap_redirect_actiu() -> bool:
+    try:
+        des_de = date.fromisoformat(os.environ.get("SAP_REDIRECT_DES_DE", "2026-11-23"))
+    except ValueError:
+        return False
+    return date.today() >= des_de
+
+
+@app.before_request
+def _redirect_a_sap():
+    if request.method not in ("GET", "HEAD"):
+        return None
+    if request.host.split(":")[0].lower() not in _SAP_REDIRECT_HOSTS:
+        return None
+    if request.path.startswith(_SAP_REDIRECT_EXCLOSOS):
+        return None
+    if not _sap_redirect_actiu():
+        return None
+    qs = request.query_string.decode("utf-8", "replace")
+    return redirect(_SAP_REDIRECT_URL + request.path + (f"?{qs}" if qs else ""), code=302)
+
+
 # --- CSRF (double-submit cookie pattern) ----------------------------------
 # Per a PATCH/POST/DELETE als endpoints que modifiquen agrupacions, exigim
 # que el header `X-CSRF-Token` coincideixi amb el valor de la cookie
